@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -13,6 +13,7 @@ const Index = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [url, setUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -47,9 +48,12 @@ const Index = () => {
       }).select().single();
       if (error) throw error;
 
-      // Trigger background parse — don't block redirect
+      // Trigger background parse then refresh article data
       supabase.functions.invoke("parse-article", {
         body: { article_id: data.id },
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["article", data.id] });
+        queryClient.invalidateQueries({ queryKey: ["articles"] });
       }).catch(console.error);
 
       setUrl("");
