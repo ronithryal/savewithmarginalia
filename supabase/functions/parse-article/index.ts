@@ -6,7 +6,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-/** Decode common HTML entities */
 function decodeEntities(s: string): string {
   return s
     .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
@@ -14,102 +13,99 @@ function decodeEntities(s: string): string {
     .replace(/&#x2F;/g, "/").replace(/&nbsp;/g, " ");
 }
 
-/** Strip HTML tags and collapse whitespace */
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+interface OgData {
+  title: string;
+  summary: string | null;
+  image: string | null;
+  source: string;
+  url: string;
 }
 
-/** Try to extract a TL;DR or Summary section from the page body */
-function extractTldr(bodyHtml: string): string | null {
-  // Remove scripts/styles first
-  const cleaned = bodyHtml
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "");
-
-  // Patterns: heading or bold containing TL;DR / TLDR / Summary, followed by content
+function extractMeta(head: string, property: string): string | null {
+  // Match both property="..." and name="..." variants, content before or after
   const patterns = [
-    // <h2>TL;DR</h2> ... content until next heading/section
-    /(?:<(?:h[1-6]|strong|b)[^>]*>)\s*(?:TL;?\s*DR|TLDR|Summary|Key\s*Takeaway[s]?)\s*:?\s*(?:<\/(?:h[1-6]|strong|b)>)\s*([\s\S]*?)(?=<(?:h[1-6])\b|<hr|$)/i,
-    // **TL;DR:** or TL;DR: inline, then content until next heading
-    /(?:TL;?\s*DR|TLDR)\s*:?\s*<\/[^>]+>\s*([\s\S]*?)(?=<(?:h[1-6])\b|<hr|$)/i,
-    // Plain text TL;DR: ... (catches rendered markdown)
-    /(?:TL;?\s*DR|TLDR)\s*:\s*([\s\S]*?)(?=<(?:h[1-6])\b|<hr|<\/(?:article|main|section)>|$)/i,
+    new RegExp(`<meta[^>]*(?:property|name)=["']${property}["'][^>]*content=["']([^"']+)["']`, "i"),
+    new RegExp(`<meta[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']${property}["']`, "i"),
   ];
-
-  for (const pattern of patterns) {
-    const match = cleaned.match(pattern);
-    if (match?.[1]) {
-      const text = stripHtml(decodeEntities(match[1]));
-      if (text.length > 30 && text.length < 2000) {
-        return text;
-      }
-    }
+  for (const p of patterns) {
+    const m = head.match(p);
+    if (m?.[1]) return decodeEntities(m[1]).trim();
   }
   return null;
 }
 
-/** Extract readable body text (first ~4000 chars) for AI summarization */
-function extractBodyText(html: string): string {
-  let cleaned = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<nav[\s\S]*?<\/nav>/gi, "")
-    .replace(/<header[\s\S]*?<\/header>/gi, "")
-    .replace(/<footer[\s\S]*?<\/footer>/gi, "")
-    .replace(/<aside[\s\S]*?<\/aside>/gi, "");
-
-  // Prefer <article> or <main>
-  const articleMatch = cleaned.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
-  const mainMatch = cleaned.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
-  const content = articleMatch?.[1] || mainMatch?.[1] || cleaned;
-
-  const text = stripHtml(decodeEntities(content));
-  return text.slice(0, 4000);
+function extractTitle(head: string): string | null {
+  const m = head.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return m?.[1] ? decodeEntities(m[1]).trim() : null;
 }
 
-/** Use Lovable AI to generate a summary from article text */
-async function aiSummarize(articleText: string, title: string): Promise<string | null> {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
-  if (!apiKey) {
-    console.error("LOVABLE_API_KEY not configured");
-    return null;
+function isTwitterUrl(url: string): boolean {
+  return /^https?:\/\/(www\.)?(twitter\.com|x\.com)\//i.test(url);
+}
+
+function isLinkedInUrl(url: string): boolean {
+  return /^https?:\/\/(www\.)?linkedin\.com\//i.test(url);
+}
+
+function domainFrom(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "unknown"; }
+}
+
+async function fetchOgData(articleUrl: string): Promise<OgData> {
+  const domain = domainFrom(articleUrl);
+
+  // LinkedIn blocks crawlers — skip fetch entirely
+  // TODO: LinkedIn requires authenticated API access for rich previews
+  if (isLinkedInUrl(articleUrl)) {
+    return { title: "LinkedIn Post", summary: null, image: null, source: "linkedin.com", url: articleUrl };
   }
 
+  let head = "";
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
+    const resp = await fetch(articleUrl, {
       headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; Marginalia/1.0; +https://marginalia.app)",
+        Accept: "text/html,application/xhtml+xml",
       },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a concise summarizer. Given an article's title and body text, produce a 1-3 sentence summary that captures the key insight or takeaway. Return ONLY the summary text, no labels or prefixes.",
-          },
-          {
-            role: "user",
-            content: `Title: ${title}\n\nArticle text:\n${articleText}`,
-          },
-        ],
-      }),
+      signal: AbortSignal.timeout(5000),
     });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-    if (!response.ok) {
-      console.error("AI gateway error:", response.status, await response.text());
-      return null;
-    }
-
-    const data = await response.json();
-    const summary = data.choices?.[0]?.message?.content?.trim();
-    return summary && summary.length > 10 ? summary : null;
+    const html = await resp.text();
+    // Only parse <head> for performance
+    const headEnd = html.indexOf("</head>");
+    head = headEnd > -1 ? html.slice(0, headEnd) : html.slice(0, 8000);
   } catch (err) {
-    console.error("AI summarize error:", err);
-    return null;
+    console.error("Fetch failed for", articleUrl, err);
+    return { title: domain, summary: null, image: null, source: domain, url: articleUrl };
   }
+
+  const isTwitter = isTwitterUrl(articleUrl);
+
+  // Title: og:title → twitter:title → <title>
+  const title = extractMeta(head, "og:title")
+    || extractMeta(head, "twitter:title")
+    || extractTitle(head)
+    || domain;
+
+  // Description: og:description → twitter:description → meta description
+  const summary = extractMeta(head, "og:description")
+    || extractMeta(head, "twitter:description")
+    || extractMeta(head, "description")
+    || null;
+
+  // Image: og:image → twitter:image
+  const image = extractMeta(head, "og:image")
+    || extractMeta(head, "twitter:image")
+    || null;
+
+  // Source: og:site_name → domain (force x.com for twitter)
+  const source = isTwitter ? "x.com" : (extractMeta(head, "og:site_name") || domain);
+
+  // Canonical URL: og:url → original
+  const canonicalUrl = extractMeta(head, "og:url") || articleUrl;
+
+  return { title, summary, image, source, url: canonicalUrl };
 }
 
 Deno.serve(async (req) => {
@@ -121,8 +117,7 @@ Deno.serve(async (req) => {
     const { article_id } = await req.json();
     if (!article_id) {
       return new Response(JSON.stringify({ error: "article_id required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -130,132 +125,45 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    if (!supabaseUrl || !serviceKey) {
-      return new Response(JSON.stringify({ error: "Server config error" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const adminClient = createClient(supabaseUrl, serviceKey, {
+    const client = createClient(supabaseUrl, serviceKey, {
       global: { headers: { Authorization: authHeader! } },
     });
-    const {
-      data: { user },
-    } = await adminClient.auth.getUser();
+
+    const { data: { user } } = await client.auth.getUser();
     if (!user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { data: article, error: fetchErr } = await adminClient
-      .from("articles")
-      .select("*")
-      .eq("id", article_id)
-      .eq("user_id", user.id)
-      .single();
-
+    const { data: article, error: fetchErr } = await client
+      .from("articles").select("*").eq("id", article_id).eq("user_id", user.id).single();
     if (fetchErr || !article) {
       return new Response(JSON.stringify({ error: "Article not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const url = article.url;
-    let title = article.title;
-    let previewImageUrl: string | null = null;
-    let description: string | null = null;
-    let siteName: string | null = null;
+    const og = await fetchOgData(article.url);
 
-    try {
-      const response = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; Lovable/1.0; +https://lovable.dev)",
-          Accept: "text/html,application/xhtml+xml",
-        },
-        signal: AbortSignal.timeout(15000),
-      });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const html = await response.text();
-
-      // Extract title: og:title > <title>
-      const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
-      const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-      const extractedTitle = ogTitleMatch?.[1] || titleMatch?.[1]?.trim() || null;
-      if (extractedTitle) {
-        title = decodeEntities(extractedTitle);
-      }
-
-      // Extract og:image
-      const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
-      if (ogImageMatch?.[1]) previewImageUrl = ogImageMatch[1];
-
-      // Extract og:site_name
-      const siteNameMatch = html.match(/<meta[^>]*property=["']og:site_name["'][^>]*content=["']([^"']+)["']/i);
-      if (siteNameMatch?.[1]) siteName = siteNameMatch[1].trim();
-
-      // --- Summary extraction priority ---
-      // 1. In-page TL;DR / Summary section
-      const tldr = extractTldr(html);
-      if (tldr) {
-        description = tldr;
-        console.log("Summary source: TL;DR section found in page");
-      }
-
-      // 2. If no TL;DR, try AI summarization from body text
-      if (!description) {
-        const bodyText = extractBodyText(html);
-        if (bodyText.length > 100) {
-          const aiSummary = await aiSummarize(bodyText, title);
-          if (aiSummary) {
-            description = aiSummary;
-            console.log("Summary source: AI-generated");
-          }
-        }
-      }
-
-      // 3. Last resort: og:description / meta description
-      if (!description) {
-        const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i)
-          || html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
-        if (ogDescMatch?.[1]) {
-          description = decodeEntities(ogDescMatch[1]).trim();
-          console.log("Summary source: og:description fallback");
-        }
-      }
-    } catch (parseError) {
-      console.error("Parse error:", parseError);
-    }
-
-    // Update the article record
     const updates: Record<string, unknown> = {};
-    if (title !== article.title) updates.title = title;
-    if (previewImageUrl) updates.preview_image_url = previewImageUrl;
-    if (description) updates.content_text = description;
-    if (siteName && siteName !== article.source_domain) updates.source_domain = siteName;
+    if (og.title && og.title !== article.title) updates.title = og.title;
+    if (og.image) updates.preview_image_url = og.image;
+    if (og.summary) updates.content_text = og.summary;
+    if (og.source && og.source !== article.source_domain) updates.source_domain = og.source;
 
     if (Object.keys(updates).length > 0) {
-      const { error: updateErr } = await adminClient
-        .from("articles")
-        .update(updates)
-        .eq("id", article_id);
+      const { error: updateErr } = await client.from("articles").update(updates).eq("id", article_id);
       if (updateErr) console.error("Update error:", updateErr);
     }
 
-    return new Response(
-      JSON.stringify({ success: true, title: updates.title || article.title }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ success: true, ...og }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (err) {
     console.error("Edge function error:", err);
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
