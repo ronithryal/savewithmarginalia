@@ -1,13 +1,21 @@
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowLeft } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 const ArticleDetail = () => {
   const { user } = useAuth();
   const { id } = useParams<{ id: string }>();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [quoteText, setQuoteText] = useState("");
+  const [savingQuote, setSavingQuote] = useState(false);
 
   const { data: article } = useQuery({
     queryKey: ["article", id],
@@ -37,6 +45,33 @@ const ArticleDetail = () => {
     enabled: !!user && !!id,
   });
 
+  const handleSaveQuote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quoteText.trim() || !user || !id) return;
+    setSavingQuote(true);
+
+    try {
+      // TODO: Later populate start_offset and end_offset from text selection
+      // TODO: Support image-based quotes (is_image = true, image_url)
+      const { error } = await supabase.from("quotes").insert({
+        user_id: user.id,
+        article_id: id,
+        text: quoteText.trim(),
+        start_offset: null,
+        end_offset: null,
+        is_image: false,
+        image_url: null,
+      });
+      if (error) throw error;
+      setQuoteText("");
+      queryClient.invalidateQueries({ queryKey: ["article-quotes", id] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    }
+
+    setSavingQuote(false);
+  };
+
   if (!article) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-16">
@@ -46,7 +81,7 @@ const ArticleDetail = () => {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16 animate-fade-in">
+    <div className="mx-auto max-w-[700px] px-6 py-16 animate-fade-in">
       <Link to="/articles" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-8">
         <ArrowLeft className="h-3.5 w-3.5" /> Back to articles
       </Link>
@@ -60,13 +95,46 @@ const ArticleDetail = () => {
         </p>
       </header>
 
-      {/* TODO: Render article content here. Add highlight-to-quote interactions. */}
-      <div className="border border-border rounded-md p-6 mb-10">
-        <p className="text-sm text-muted-foreground italic">
-          Article content will be rendered here once URL parsing is implemented.
-        </p>
-      </div>
+      {/* Reader section */}
+      {/* TODO: Add highlight-to-quote interactions when the user selects text */}
+      <section className="mb-12">
+        {article.content_text ? (
+          <div className="prose prose-sm max-w-none text-foreground leading-relaxed whitespace-pre-wrap">
+            {article.content_text}
+          </div>
+        ) : (
+          <div className="border border-border rounded-md p-6">
+            <p className="text-sm text-muted-foreground italic">
+              Content not loaded yet. TODO: fetch and parse article HTML into content_text.
+            </p>
+          </div>
+        )}
+      </section>
 
+      {/* Add Quote form */}
+      <section className="border border-border rounded-md p-6 mb-10">
+        <h3 className="font-display text-base font-semibold text-foreground mb-4">Add Quote</h3>
+        <form onSubmit={handleSaveQuote} className="space-y-4">
+          <div>
+            <label htmlFor="quote-text" className="text-sm text-muted-foreground mb-1.5 block">
+              Quote text
+            </label>
+            <Textarea
+              id="quote-text"
+              placeholder="Paste or type a quote…"
+              value={quoteText}
+              onChange={(e) => setQuoteText(e.target.value)}
+              required
+              className="min-h-[100px]"
+            />
+          </div>
+          <Button type="submit" disabled={savingQuote || !quoteText.trim()} className="px-6">
+            {savingQuote ? "…" : "Save quote"}
+          </Button>
+        </form>
+      </section>
+
+      {/* Quotes list */}
       <section>
         <h2 className="font-display text-xl font-semibold text-foreground mb-4">
           Quotes ({quotes?.length || 0})
@@ -76,9 +144,9 @@ const ArticleDetail = () => {
         )}
         <div className="space-y-4">
           {quotes?.map((quote) => (
-            <blockquote key={quote.id} className="border-l-2 border-accent pl-4 py-1">
-              <p className="text-foreground text-sm leading-relaxed">{quote.text}</p>
-              <span className="text-xs text-muted-foreground mt-1 block">
+            <blockquote key={quote.id} className="border-l-2 border-accent pl-4 py-2">
+              <p className="text-foreground text-sm leading-relaxed line-clamp-6">{quote.text}</p>
+              <span className="text-xs text-muted-foreground mt-1.5 block">
                 {formatDistanceToNow(new Date(quote.created_at), { addSuffix: true })}
               </span>
             </blockquote>
