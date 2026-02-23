@@ -5,12 +5,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 
 const Index = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [url, setUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -36,15 +37,17 @@ const Index = () => {
     try {
       const domain = new URL(url).hostname.replace("www.", "");
       // TODO: Fetch and parse article content from URL (title, text, preview image)
-      const { error } = await supabase.from("articles").insert({
+      const { data, error } = await supabase.from("articles").insert({
         user_id: user.id,
         url: url.trim(),
-        title: url.trim(),
+        title: "Untitled article",
         source_domain: domain,
-      });
+        preview_image_url: null,
+        content_text: "",
+      }).select().single();
       if (error) throw error;
-      toast({ title: "Article saved" });
       setUrl("");
+      navigate(`/articles/${data.id}`);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
