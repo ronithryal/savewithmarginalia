@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Trash2 } from "lucide-react";
 
 interface ArticleCardProps {
   article: {
@@ -9,9 +9,10 @@ interface ArticleCardProps {
     source_domain: string;
     created_at: string;
     preview_image_url: string | null;
-    content_text: string | null; // used as description/summary
+    content_text: string | null;
   };
   fullWidth?: boolean;
+  onDelete?: (id: string) => void;
 }
 
 const XIcon = () => (
@@ -26,7 +27,7 @@ const isTwitterUrl = (url: string) =>
 const isLinkedInUrl = (url: string) =>
   /^https?:\/\/(www\.)?linkedin\.com\//i.test(url);
 
-const ArticleCard = ({ article, fullWidth = false }: ArticleCardProps) => {
+const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps) => {
   const isTwitter = isTwitterUrl(article.url);
   const isLinkedIn = isLinkedInUrl(article.url);
   const description = article.content_text || "";
@@ -56,9 +57,20 @@ const ArticleCard = ({ article, fullWidth = false }: ArticleCardProps) => {
             <div className="flex items-center gap-2 text-foreground">
               <XIcon />
             </div>
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              X (Twitter)
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                X (Twitter)
+              </span>
+              {onDelete && (
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(article.id); }}
+                  className="text-muted-foreground hover:text-destructive transition-colors p-0.5"
+                  aria-label="Delete article"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           </div>
 
           {(displayTitle() !== "Untitled article" || handle) && (
@@ -117,9 +129,20 @@ const ArticleCard = ({ article, fullWidth = false }: ArticleCardProps) => {
       )}
 
       <div className="p-4">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground block mb-1.5">
-          {isLinkedIn ? "LINKEDIN" : article.source_domain.toUpperCase()}
-        </span>
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            {isLinkedIn ? "LINKEDIN" : article.source_domain.toUpperCase()}
+          </span>
+          {onDelete && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(article.id); }}
+              className="text-muted-foreground hover:text-destructive transition-colors p-0.5"
+              aria-label="Delete article"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
 
         <h3 className="font-display text-[15px] font-bold text-foreground leading-snug line-clamp-2 mb-1.5">
           {displayTitle()}
