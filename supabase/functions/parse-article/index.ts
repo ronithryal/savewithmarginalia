@@ -23,24 +23,28 @@ Deno.serve(async (req) => {
     // Validate user auth
     const authHeader = req.headers.get("Authorization");
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const userClient = createClient(supabaseUrl, supabaseKey, {
+    if (!supabaseUrl || !serviceKey) {
+      return new Response(JSON.stringify({ error: "Server config error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Use service role client with user's auth header for getUser
+    const adminClient = createClient(supabaseUrl, serviceKey, {
       global: { headers: { Authorization: authHeader! } },
     });
     const {
       data: { user },
-    } = await userClient.auth.getUser();
+    } = await adminClient.auth.getUser();
     if (!user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    // Fetch the article
-    const adminClient = createClient(supabaseUrl, serviceKey);
     const { data: article, error: fetchErr } = await adminClient
       .from("articles")
       .select("*")
