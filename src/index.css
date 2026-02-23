@@ -86,3 +86,56 @@
     font-family: var(--font-display);
   }
 }
+
+/* Article reader styles */
+.article-reader img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+  margin: 1rem 0;
+}
+
+.article-reader img[alt]::after {
+  content: attr(alt);
+  display: block;
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted));
+  border-radius: 0.375rem;
+  text-align: center;
+}
+
+.article-reader blockquote {
+  border-left: 2px solid hsl(var(--accent));
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: hsl(var(--muted-foreground));
+}
+
+.article-reader .tweet-card {
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 0.5rem !important;
+  padding: 1rem !important;
+  margin: 0.75rem 0 !important;
+  background: hsl(var(--muted)) !important;
+}
+
+.article-reader a {
+  color: hsl(var(--accent));
+  text-decoration: underline;
+}
+
+.article-reader h1,
+.article-reader h2,
+.article-reader h3,
+.article-reader h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.article-reader p {
+  margin-bottom: 0.75rem;
+}
