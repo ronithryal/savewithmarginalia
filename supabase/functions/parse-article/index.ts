@@ -128,42 +128,9 @@ function extractOgFromHtml(html: string, originalUrl: string): OgResult {
   return { title, description, image, source, url: canonicalUrl };
 }
 
-/** Try fetching OG image for a tweet URL (X does serve og:image) */
-async function fetchTwitterOgImage(tweetUrl: string): Promise<string | null> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-    const resp = await fetch(tweetUrl, {
-      headers: {
-        "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-      },
-      signal: controller.signal,
-      redirect: "follow",
-    });
-    clearTimeout(timeout);
-    if (!resp.ok) {
-      console.error("OG image fetch HTTP error:", resp.status);
-      return null;
-    }
-    const html = await resp.text();
-    const doc = new DOMParser().parseFromString(html, "text/html");
-    if (!doc) return null;
-    const img = doc.querySelector(`meta[property='og:image']`)?.getAttribute("content") ||
-                doc.querySelector(`meta[name='twitter:image']`)?.getAttribute("content") ||
-                null;
-    // Only return fully resolved https:// URLs, never t.co or pic.twitter.com
-    if (img && img.startsWith("https://") && !img.includes("t.co/") && !img.includes("pic.twitter.com/")) {
-      return img;
-    }
-    console.error("OG image not found or invalid:", img);
-    return null;
-  } catch (err) {
-    console.error("OG image fetch failed:", err);
-    return null;
-  }
-}
+// TODO: Tweet media requires X API v2 (paid) for server-side fetching.
+// The browser extension will capture the image URL client-side at save time
+// and pass it directly to the article creation endpoint.
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -224,19 +191,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ─── Twitter/X: use oEmbed API + OG image ───
+    // ─── Twitter/X: use oEmbed API only (no image fetch) ───
     if (isTwitterUrl(articleUrl)) {
-      const [oembed, ogImage] = await Promise.all([
-        fetchTwitterOEmbed(articleUrl),
-        fetchTwitterOgImage(articleUrl),
-      ]);
+      const oembed = await fetchTwitterOEmbed(articleUrl);
 
       const updates: Record<string, unknown> = {
         source_domain: "x.com",
+        preview_image_url: null,
       };
       if (oembed.title) updates.title = oembed.title;
       if (oembed.description) updates.content_text = oembed.description;
-      if (ogImage) updates.preview_image_url = ogImage;
 
       await client.from("articles").update(updates).eq("id", article_id);
 
@@ -244,7 +208,7 @@ Deno.serve(async (req) => {
         success: true,
         title: oembed.title,
         description: oembed.description,
-        image: ogImage,
+        image: null,
         source: "x.com",
         url: articleUrl,
       }), {

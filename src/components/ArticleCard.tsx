@@ -101,8 +101,8 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
           )}
         </div>
 
-        {/* Preview image */}
-        {article.preview_image_url && (
+        {/* Preview image or media placeholder */}
+        {article.preview_image_url ? (
           <div className="px-4 pb-3">
             <div className="w-full max-h-[200px] overflow-hidden rounded-md bg-muted">
               <img
@@ -113,6 +113,10 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
                 onError={(e) => { (e.currentTarget as HTMLImageElement).parentElement!.style.display = "none"; }}
               />
             </div>
+          </div>
+        ) : (
+          <div className="mx-4 mb-3 rounded-md flex items-center justify-center" style={{ backgroundColor: "#F3F4F6", height: 48 }}>
+            <span style={{ fontSize: 11, color: "#9CA3AF" }}>Media not loaded · Save via extension for full preview</span>
           </div>
         )}
 
