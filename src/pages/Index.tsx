@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 
 const Index = () => {
   const { user } = useAuth();
@@ -20,7 +21,7 @@ const Index = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("quotes")
-        .select("*, articles(title, source_domain)")
+        .select("*, articles(id, title, source_domain)")
         .order("created_at", { ascending: false })
         .limit(5);
       if (error) throw error;
@@ -77,31 +78,46 @@ const Index = () => {
         </Button>
       </form>
 
-      {recentQuotes && recentQuotes.length > 0 && (
-        <section>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="font-display text-xl font-semibold text-foreground">Recent quotes</h2>
-            <Link to="/quotes" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
-              View all <ArrowRight className="h-3 w-3" />
-            </Link>
-          </div>
+      <section>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="font-display text-xl font-semibold text-foreground">Recent quotes</h2>
+          <Link to="/quotes" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
+            View all <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+
+        {recentQuotes && recentQuotes.length === 0 && (
+          <p className="text-muted-foreground text-sm">
+            No quotes saved yet. Save an article and start highlighting.
+          </p>
+        )}
+
+        {recentQuotes && recentQuotes.length > 0 && (
           <div className="space-y-4">
-            {recentQuotes.map((quote) => (
-              <blockquote
-                key={quote.id}
-                className="border-l-2 border-accent pl-4 py-1"
-              >
-                <p className="text-foreground text-sm leading-relaxed">
-                  {quote.text}
-                </p>
-                <cite className="text-xs text-muted-foreground not-italic mt-1 block">
-                  {(quote as any).articles?.title || "Unknown article"}
-                </cite>
-              </blockquote>
-            ))}
+            {recentQuotes.map((quote) => {
+              const article = (quote as any).articles;
+              return (
+                <blockquote key={quote.id} className="border-l-2 border-accent pl-4 py-1">
+                  <p className="text-foreground text-sm leading-relaxed">
+                    {quote.text.length > 150 ? quote.text.slice(0, 150) + "…" : quote.text}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Link
+                      to={`/articles/${article?.id}`}
+                      className="text-xs text-muted-foreground hover:text-accent transition-colors"
+                    >
+                      {article?.title || "Unknown article"}
+                    </Link>
+                    <span className="text-xs text-muted-foreground">
+                      · {formatDistanceToNow(new Date(quote.created_at), { addSuffix: true })}
+                    </span>
+                  </div>
+                </blockquote>
+              );
+            })}
           </div>
-        </section>
-      )}
+        )}
+      </section>
     </div>
   );
 };

@@ -21,6 +21,13 @@ const Articles = () => {
     enabled: !!user,
   });
 
+  const displayTitle = (article: { title: string; url: string }) => {
+    if (!article.title || article.title === article.url || article.title.trim() === "") {
+      return "Untitled article";
+    }
+    return article.title;
+  };
+
   return (
     <div className="mx-auto max-w-2xl px-6 py-16 animate-fade-in">
       <h1 className="font-display text-3xl font-bold tracking-tight text-foreground mb-8">
@@ -44,7 +51,7 @@ const Articles = () => {
           >
             <div className="min-w-0 flex-1">
               <h3 className="text-sm font-medium text-foreground group-hover:text-accent transition-colors truncate">
-                {article.title || article.url}
+                {displayTitle(article)}
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {article.source_domain} · {formatDistanceToNow(new Date(article.created_at), { addSuffix: true })}

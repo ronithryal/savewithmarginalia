@@ -8,6 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import TagInput from "@/components/TagInput";
 
 const ArticleDetail = () => {
   const { user } = useAuth();
@@ -16,6 +17,7 @@ const ArticleDetail = () => {
   const queryClient = useQueryClient();
   const [quoteText, setQuoteText] = useState("");
   const [savingQuote, setSavingQuote] = useState(false);
+  const [lastSavedQuoteId, setLastSavedQuoteId] = useState<string | null>(null);
 
   const { data: article } = useQuery({
     queryKey: ["article", id],
@@ -45,6 +47,58 @@ const ArticleDetail = () => {
     enabled: !!user && !!id,
   });
 
+  // Article tags
+  const { data: articleTagIds } = useQuery({
+    queryKey: ["article-tags", id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("article_tags")
+        .select("tag_id")
+        .eq("article_id", id!);
+      if (error) throw error;
+      return data.map((r) => r.tag_id);
+    },
+    enabled: !!user && !!id,
+  });
+
+  // Quote tags for last saved quote
+  const { data: quoteTagIds } = useQuery({
+    queryKey: ["quote-tags", lastSavedQuoteId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("quote_tags")
+        .select("tag_id")
+        .eq("quote_id", lastSavedQuoteId!);
+      if (error) throw error;
+      return data.map((r) => r.tag_id);
+    },
+    enabled: !!lastSavedQuoteId,
+  });
+
+  const handleAttachArticleTag = async (tagId: string) => {
+    if (!id) return;
+    await supabase.from("article_tags").insert({ article_id: id, tag_id: tagId });
+    queryClient.invalidateQueries({ queryKey: ["article-tags", id] });
+  };
+
+  const handleDetachArticleTag = async (tagId: string) => {
+    if (!id) return;
+    await supabase.from("article_tags").delete().eq("article_id", id).eq("tag_id", tagId);
+    queryClient.invalidateQueries({ queryKey: ["article-tags", id] });
+  };
+
+  const handleAttachQuoteTag = async (tagId: string) => {
+    if (!lastSavedQuoteId) return;
+    await supabase.from("quote_tags").insert({ quote_id: lastSavedQuoteId, tag_id: tagId });
+    queryClient.invalidateQueries({ queryKey: ["quote-tags", lastSavedQuoteId] });
+  };
+
+  const handleDetachQuoteTag = async (tagId: string) => {
+    if (!lastSavedQuoteId) return;
+    await supabase.from("quote_tags").delete().eq("quote_id", lastSavedQuoteId).eq("tag_id", tagId);
+    queryClient.invalidateQueries({ queryKey: ["quote-tags", lastSavedQuoteId] });
+  };
+
   const handleSaveQuote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quoteText.trim() || !user || !id) return;
@@ -53,7 +107,7 @@ const ArticleDetail = () => {
     try {
       // TODO: Later populate start_offset and end_offset from text selection
       // TODO: Support image-based quotes (is_image = true, image_url)
-      const { error } = await supabase.from("quotes").insert({
+      const { data, error } = await supabase.from("quotes").insert({
         user_id: user.id,
         article_id: id,
         text: quoteText.trim(),
@@ -61,9 +115,10 @@ const ArticleDetail = () => {
         end_offset: null,
         is_image: false,
         image_url: null,
-      });
+      }).select().single();
       if (error) throw error;
       setQuoteText("");
+      setLastSavedQuoteId(data.id);
       queryClient.invalidateQueries({ queryKey: ["article-quotes", id] });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -86,14 +141,23 @@ const ArticleDetail = () => {
         <ArrowLeft className="h-3.5 w-3.5" /> Back to articles
       </Link>
 
-      <header className="mb-10">
+      <header className="mb-4">
         <h1 className="font-display text-3xl font-bold tracking-tight text-foreground mb-2">
-          {article.title || article.url}
+          {article.title || "Untitled article"}
         </h1>
         <p className="text-sm text-muted-foreground">
           {article.source_domain} · {formatDistanceToNow(new Date(article.created_at), { addSuffix: true })}
         </p>
       </header>
+
+      {/* Tags row */}
+      <div className="mb-10">
+        <TagInput
+          attachedTagIds={articleTagIds ?? []}
+          onAttach={handleAttachArticleTag}
+          onDetach={handleDetachArticleTag}
+        />
+      </div>
 
       {/* Reader section */}
       {/* TODO: Add highlight-to-quote interactions when the user selects text */}
@@ -132,6 +196,24 @@ const ArticleDetail = () => {
             {savingQuote ? "…" : "Save quote"}
           </Button>
         </form>
+
+        {/* Tag the last saved quote */}
+        {lastSavedQuoteId && (
+          <div className="mt-4 pt-4 border-t border-border">
+            <p className="text-xs text-muted-foreground mb-2">Tag this quote:</p>
+            <TagInput
+              attachedTagIds={quoteTagIds ?? []}
+              onAttach={handleAttachQuoteTag}
+              onDetach={handleDetachQuoteTag}
+            />
+            <button
+              onClick={() => setLastSavedQuoteId(null)}
+              className="mt-2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              Done
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Quotes list */}
