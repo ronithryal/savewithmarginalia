@@ -6,6 +6,112 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/** Decode common HTML entities */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, "/").replace(/&nbsp;/g, " ");
+}
+
+/** Strip HTML tags and collapse whitespace */
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Try to extract a TL;DR or Summary section from the page body */
+function extractTldr(bodyHtml: string): string | null {
+  // Remove scripts/styles first
+  const cleaned = bodyHtml
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "");
+
+  // Patterns: heading or bold containing TL;DR / TLDR / Summary, followed by content
+  const patterns = [
+    // <h2>TL;DR</h2> ... content until next heading/section
+    /(?:<(?:h[1-6]|strong|b)[^>]*>)\s*(?:TL;?\s*DR|TLDR|Summary|Key\s*Takeaway[s]?)\s*:?\s*(?:<\/(?:h[1-6]|strong|b)>)\s*([\s\S]*?)(?=<(?:h[1-6])\b|<hr|$)/i,
+    // **TL;DR:** or TL;DR: inline, then content until next heading
+    /(?:TL;?\s*DR|TLDR)\s*:?\s*<\/[^>]+>\s*([\s\S]*?)(?=<(?:h[1-6])\b|<hr|$)/i,
+    // Plain text TL;DR: ... (catches rendered markdown)
+    /(?:TL;?\s*DR|TLDR)\s*:\s*([\s\S]*?)(?=<(?:h[1-6])\b|<hr|<\/(?:article|main|section)>|$)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = cleaned.match(pattern);
+    if (match?.[1]) {
+      const text = stripHtml(decodeEntities(match[1]));
+      if (text.length > 30 && text.length < 2000) {
+        return text;
+      }
+    }
+  }
+  return null;
+}
+
+/** Extract readable body text (first ~4000 chars) for AI summarization */
+function extractBodyText(html: string): string {
+  let cleaned = html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<nav[\s\S]*?<\/nav>/gi, "")
+    .replace(/<header[\s\S]*?<\/header>/gi, "")
+    .replace(/<footer[\s\S]*?<\/footer>/gi, "")
+    .replace(/<aside[\s\S]*?<\/aside>/gi, "");
+
+  // Prefer <article> or <main>
+  const articleMatch = cleaned.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+  const mainMatch = cleaned.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
+  const content = articleMatch?.[1] || mainMatch?.[1] || cleaned;
+
+  const text = stripHtml(decodeEntities(content));
+  return text.slice(0, 4000);
+}
+
+/** Use Lovable AI to generate a summary from article text */
+async function aiSummarize(articleText: string, title: string): Promise<string | null> {
+  const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  if (!apiKey) {
+    console.error("LOVABLE_API_KEY not configured");
+    return null;
+  }
+
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a concise summarizer. Given an article's title and body text, produce a 1-3 sentence summary that captures the key insight or takeaway. Return ONLY the summary text, no labels or prefixes.",
+          },
+          {
+            role: "user",
+            content: `Title: ${title}\n\nArticle text:\n${articleText}`,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("AI gateway error:", response.status, await response.text());
+      return null;
+    }
+
+    const data = await response.json();
+    const summary = data.choices?.[0]?.message?.content?.trim();
+    return summary && summary.length > 10 ? summary : null;
+  } catch (err) {
+    console.error("AI summarize error:", err);
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -82,9 +188,7 @@ Deno.serve(async (req) => {
       const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
       const extractedTitle = ogTitleMatch?.[1] || titleMatch?.[1]?.trim() || null;
       if (extractedTitle) {
-        title = extractedTitle
-          .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-          .replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&#x27;/g, "'").replace(/&#x2F;/g, "/");
+        title = decodeEntities(extractedTitle);
       }
 
       // Extract og:image
@@ -95,56 +199,40 @@ Deno.serve(async (req) => {
       const siteNameMatch = html.match(/<meta[^>]*property=["']og:site_name["'][^>]*content=["']([^"']+)["']/i);
       if (siteNameMatch?.[1]) siteName = siteNameMatch[1].trim();
 
-      // --- Summary extraction: prefer in-body TL;DR/Summary sections over og:description ---
+      // --- Summary extraction priority ---
+      // 1. In-page TL;DR / Summary section
+      const tldr = extractTldr(html);
+      if (tldr) {
+        description = tldr;
+        console.log("Summary source: TL;DR section found in page");
+      }
 
-      // Strip scripts/styles for body text extraction
-      const bodyText = html
-        .replace(/<script[\s\S]*?<\/script>/gi, "")
-        .replace(/<style[\s\S]*?<\/style>/gi, "");
-
-      // Look for TL;DR or Summary sections in the page body
-      // Match patterns like: "TL;DR" or "TLDR" or "Summary" followed by content
-      const tldrPatterns = [
-        // TL;DR as a heading followed by paragraph(s)
-        /<(?:h[1-6]|strong|b)[^>]*>\s*(?:TL;?\s*DR|TLDR)\s*:?\s*<\/(?:h[1-6]|strong|b)>\s*(?:<[^>]*>)*\s*([\s\S]*?)(?=<(?:h[1-6]|hr|section|div\s+class))/i,
-        // TL;DR inline with colon: "TL;DR: some text" or "TL;DR\nsome text"
-        /(?:TL;?\s*DR|TLDR)\s*:?\s*(?:<\/[^>]+>\s*)?(?:<[^>]*>\s*)*([\s\S]*?)(?=<(?:h[1-6]|hr|section)|$)/i,
-      ];
-
-      let tldrText: string | null = null;
-      for (const pattern of tldrPatterns) {
-        const match = bodyText.match(pattern);
-        if (match?.[1]) {
-          // Strip HTML tags and clean up
-          const cleaned = match[1]
-            .replace(/<[^>]+>/g, " ")
-            .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-            .replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&#x27;/g, "'")
-            .replace(/\s+/g, " ")
-            .trim();
-          // Only use if it's a meaningful length
-          if (cleaned.length > 30 && cleaned.length < 2000) {
-            tldrText = cleaned;
-            break;
+      // 2. If no TL;DR, try AI summarization from body text
+      if (!description) {
+        const bodyText = extractBodyText(html);
+        if (bodyText.length > 100) {
+          const aiSummary = await aiSummarize(bodyText, title);
+          if (aiSummary) {
+            description = aiSummary;
+            console.log("Summary source: AI-generated");
           }
         }
       }
 
-      // Priority: TL;DR from body > og:description > meta description
-      if (tldrText) {
-        description = tldrText;
-      } else {
+      // 3. Last resort: og:description / meta description
+      if (!description) {
         const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i)
           || html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
         if (ogDescMatch?.[1]) {
-          description = ogDescMatch[1]
-            .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#039;/g, "'").trim();
+          description = decodeEntities(ogDescMatch[1]).trim();
+          console.log("Summary source: og:description fallback");
         }
+      }
     } catch (parseError) {
       console.error("Parse error:", parseError);
     }
 
-    // Update the article record — store description in content_text for now
+    // Update the article record
     const updates: Record<string, unknown> = {};
     if (title !== article.title) updates.title = title;
     if (previewImageUrl) updates.preview_image_url = previewImageUrl;
