@@ -38,6 +38,13 @@ const TopNav = () => {
                 {link.label}
               </Link>
             ))}
+            {/* TODO: Build /search page with AI embeddings */}
+            <Link
+              to="/search"
+              className="px-3 py-1.5 text-sm font-medium rounded-md text-muted-foreground/50 cursor-default"
+            >
+              Search
+            </Link>
           </div>
         </div>
         <div className="flex items-center gap-2">
