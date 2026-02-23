@@ -1,4 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { DOMParser } from "jsr:@b-fuze/deno-dom";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,37 +7,12 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&#x27;/g, "'")
-    .replace(/&#x2F;/g, "/").replace(/&nbsp;/g, " ");
-}
-
-interface OgData {
-  title: string;
-  summary: string | null;
-  image: string | null;
-  source: string;
-  url: string;
-}
-
-function extractMeta(head: string, property: string): string | null {
-  // Match both property="..." and name="..." variants, content before or after
-  const patterns = [
-    new RegExp(`<meta[^>]*(?:property|name)=["']${property}["'][^>]*content=["']([^"']+)["']`, "i"),
-    new RegExp(`<meta[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']${property}["']`, "i"),
-  ];
-  for (const p of patterns) {
-    const m = head.match(p);
-    if (m?.[1]) return decodeEntities(m[1]).trim();
+function domainFrom(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "unknown";
   }
-  return null;
-}
-
-function extractTitle(head: string): string | null {
-  const m = head.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  return m?.[1] ? decodeEntities(m[1]).trim() : null;
 }
 
 function isTwitterUrl(url: string): boolean {
@@ -47,77 +23,48 @@ function isLinkedInUrl(url: string): boolean {
   return /^https?:\/\/(www\.)?linkedin\.com\//i.test(url);
 }
 
-function domainFrom(url: string): string {
-  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "unknown"; }
+interface OgResult {
+  title: string | null;
+  description: string | null;
+  image: string | null;
+  source: string;
+  url: string;
 }
 
-async function fetchOgData(articleUrl: string): Promise<OgData> {
-  const domain = domainFrom(articleUrl);
-
-  // LinkedIn blocks crawlers — skip fetch entirely
-  // TODO: LinkedIn requires authenticated API access for rich previews
-  if (isLinkedInUrl(articleUrl)) {
-    return { title: "LinkedIn Post", summary: null, image: null, source: "linkedin.com", url: articleUrl };
+function extractOgFromHtml(html: string, originalUrl: string): OgResult {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  if (!doc) {
+    return { title: null, description: null, image: null, source: domainFrom(originalUrl), url: originalUrl };
   }
 
-  let head = "";
-  try {
-    const resp = await fetch(articleUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; Marginalia/1.0; +https://marginalia.app)",
-        Accept: "text/html,application/xhtml+xml",
-      },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const getMeta = (property: string): string | null =>
+    doc.querySelector(`meta[property='${property}']`)?.getAttribute("content") ||
+    doc.querySelector(`meta[name='${property}']`)?.getAttribute("content") ||
+    null;
 
-    const html = await resp.text();
-    // Only parse <head> for performance
-    const headEnd = html.indexOf("</head>");
-    head = headEnd > -1 ? html.slice(0, headEnd) : html.slice(0, 8000);
-  } catch (err) {
-    console.error("Fetch failed for", articleUrl, err);
-    return { title: domain, summary: null, image: null, source: domain, url: articleUrl };
-  }
+  const title = getMeta("og:title") ?? getMeta("twitter:title") ?? doc.querySelector("title")?.textContent ?? null;
+  const description = getMeta("og:description") ?? getMeta("twitter:description") ?? getMeta("description") ?? null;
+  const image = getMeta("og:image") ?? getMeta("twitter:image") ?? null;
+  const siteName = getMeta("og:site_name") ?? null;
+  const canonicalUrl = getMeta("og:url") ?? originalUrl;
 
-  const isTwitter = isTwitterUrl(articleUrl);
+  const isTwitter = isTwitterUrl(originalUrl);
+  const source = isTwitter ? "x.com" : (siteName ?? domainFrom(originalUrl));
 
-  // Title: og:title → twitter:title → <title>
-  const title = extractMeta(head, "og:title")
-    || extractMeta(head, "twitter:title")
-    || extractTitle(head)
-    || domain;
-
-  // Description: og:description → twitter:description → meta description
-  const summary = extractMeta(head, "og:description")
-    || extractMeta(head, "twitter:description")
-    || extractMeta(head, "description")
-    || null;
-
-  // Image: og:image → twitter:image
-  const image = extractMeta(head, "og:image")
-    || extractMeta(head, "twitter:image")
-    || null;
-
-  // Source: og:site_name → domain (force x.com for twitter)
-  const source = isTwitter ? "x.com" : (extractMeta(head, "og:site_name") || domain);
-
-  // Canonical URL: og:url → original
-  const canonicalUrl = extractMeta(head, "og:url") || articleUrl;
-
-  return { title, summary, image, source, url: canonicalUrl };
+  return { title, description, image, source, url: canonicalUrl };
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
     const { article_id } = await req.json();
     if (!article_id) {
       return new Response(JSON.stringify({ error: "article_id required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -132,24 +79,67 @@ Deno.serve(async (req) => {
     const { data: { user } } = await client.auth.getUser();
     if (!user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const { data: article, error: fetchErr } = await client
-      .from("articles").select("*").eq("id", article_id).eq("user_id", user.id).single();
+      .from("articles")
+      .select("*")
+      .eq("id", article_id)
+      .eq("user_id", user.id)
+      .single();
+
     if (fetchErr || !article) {
       return new Response(JSON.stringify({ error: "Article not found" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const og = await fetchOgData(article.url);
+    const articleUrl: string = article.url;
+    const domain = domainFrom(articleUrl);
 
+    // LinkedIn blocks all crawlers — skip fetch entirely
+    // TODO: LinkedIn requires authenticated API access for rich previews
+    if (isLinkedInUrl(articleUrl)) {
+      const result = { title: "LinkedIn Post", description: null, image: null, source: "linkedin.com", url: articleUrl };
+      await client.from("articles").update({ title: "LinkedIn Post", source_domain: "linkedin.com" }).eq("id", article_id);
+      return new Response(JSON.stringify({ success: true, ...result }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let og: OgResult = { title: null, description: null, image: null, source: domain, url: articleUrl };
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+
+      const resp = await fetch(articleUrl, {
+        headers: {
+          "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.5",
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const html = await resp.text();
+      og = extractOgFromHtml(html, articleUrl);
+    } catch (err) {
+      console.error("Fetch failed for", articleUrl, err);
+      // og stays as the fallback with nulls + domain
+    }
+
+    // Update article record with extracted data
     const updates: Record<string, unknown> = {};
-    if (og.title && og.title !== article.title) updates.title = og.title;
+    if (og.title) updates.title = og.title;
     if (og.image) updates.preview_image_url = og.image;
-    if (og.summary) updates.content_text = og.summary;
+    if (og.description) updates.content_text = og.description;
     if (og.source && og.source !== article.source_domain) updates.source_domain = og.source;
 
     if (Object.keys(updates).length > 0) {
@@ -163,7 +153,8 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("Edge function error:", err);
     return new Response(JSON.stringify({ error: err.message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
