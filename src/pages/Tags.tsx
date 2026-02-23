@@ -27,7 +27,30 @@ const Tags = () => {
     enabled: !!user,
   });
 
-  // TODO: Add actual counts via join queries or aggregate functions
+  const { data: articleTagCounts } = useQuery({
+    queryKey: ["article-tag-counts"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("article_tags").select("tag_id");
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      data.forEach((row) => { counts[row.tag_id] = (counts[row.tag_id] || 0) + 1; });
+      return counts;
+    },
+    enabled: !!user,
+  });
+
+  const { data: quoteTagCounts } = useQuery({
+    queryKey: ["quote-tag-counts"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("quote_tags").select("tag_id");
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      data.forEach((row) => { counts[row.tag_id] = (counts[row.tag_id] || 0) + 1; });
+      return counts;
+    },
+    enabled: !!user,
+  });
+
   const handleAddTag = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTag.trim() || !user) return;
@@ -78,23 +101,27 @@ const Tags = () => {
 
       {/* TODO: Add AI tag suggestions */}
       <div className="divide-y divide-border">
-        {tags?.map((tag) => (
-          <div key={tag.id} className="flex items-center justify-between py-3 group">
-            <div className="flex items-center gap-2">
-              <Hash className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground">{tag.name}</span>
-              <span className="text-xs text-muted-foreground">
-                {formatDistanceToNow(new Date(tag.created_at), { addSuffix: true })}
-              </span>
+        {tags?.map((tag) => {
+          const ac = articleTagCounts?.[tag.id] || 0;
+          const qc = quoteTagCounts?.[tag.id] || 0;
+          return (
+            <div key={tag.id} className="flex items-center justify-between py-3 group">
+              <div className="flex items-center gap-2">
+                <Hash className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-sm font-medium text-foreground">{tag.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  — {ac} {ac === 1 ? "article" : "articles"} · {qc} {qc === 1 ? "quote" : "quotes"}
+                </span>
+              </div>
+              <button
+                onClick={() => handleDeleteTag(tag.id)}
+                className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
             </div>
-            <button
-              onClick={() => handleDeleteTag(tag.id)}
-              className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

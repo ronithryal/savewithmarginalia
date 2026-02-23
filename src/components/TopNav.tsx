@@ -14,6 +14,7 @@ const TopNav = () => {
     { to: "/articles", label: "Articles", icon: FileText },
     { to: "/quotes", label: "Quotes", icon: BookOpen },
     { to: "/tags", label: "Tags", icon: Hash },
+    // TODO: Add search page with AI embeddings at /search
   ];
 
   return (
