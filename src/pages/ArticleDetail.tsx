@@ -18,6 +18,23 @@ const ArticleDetail = () => {
   const [quoteText, setQuoteText] = useState("");
   const [savingQuote, setSavingQuote] = useState(false);
   const [lastSavedQuoteId, setLastSavedQuoteId] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+
+  const handleRetryParse = async () => {
+    if (!id) return;
+    setRetrying(true);
+    try {
+      const { error } = await supabase.functions.invoke("parse-article", {
+        body: { article_id: id },
+      });
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["article", id] });
+      toast({ title: "Content refreshed" });
+    } catch (err: any) {
+      toast({ title: "Parse failed", description: err.message, variant: "destructive" });
+    }
+    setRetrying(false);
+  };
 
   const { data: article } = useQuery({
     queryKey: ["article", id],
@@ -167,10 +184,18 @@ const ArticleDetail = () => {
             {article.content_text}
           </div>
         ) : (
-          <div className="border border-border rounded-md p-6">
-            <p className="text-sm text-muted-foreground italic">
-              Content not loaded yet. TODO: fetch and parse article HTML into content_text.
+          <div className="border border-border rounded-md p-6 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              We couldn't load content for this article. You can still add quotes manually.
             </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRetryParse}
+              disabled={retrying}
+            >
+              {retrying ? "Retrying…" : "Retry"}
+            </Button>
           </div>
         )}
       </section>

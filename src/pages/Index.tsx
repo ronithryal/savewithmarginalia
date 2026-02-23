@@ -37,7 +37,6 @@ const Index = () => {
 
     try {
       const domain = new URL(url).hostname.replace("www.", "");
-      // TODO: Fetch and parse article content from URL (title, text, preview image)
       const { data, error } = await supabase.from("articles").insert({
         user_id: user.id,
         url: url.trim(),
@@ -47,6 +46,12 @@ const Index = () => {
         content_text: "",
       }).select().single();
       if (error) throw error;
+
+      // Trigger background parse — don't block redirect
+      supabase.functions.invoke("parse-article", {
+        body: { article_id: data.id },
+      }).catch(console.error);
+
       setUrl("");
       navigate(`/articles/${data.id}`);
     } catch (err: any) {
