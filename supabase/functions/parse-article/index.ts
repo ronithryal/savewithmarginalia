@@ -91,17 +91,55 @@ Deno.serve(async (req) => {
       const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
       if (ogImageMatch?.[1]) previewImageUrl = ogImageMatch[1];
 
-      // Extract description: og:description > meta description
-      const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i)
-        || html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
-      if (ogDescMatch?.[1]) {
-        description = ogDescMatch[1]
-          .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#039;/g, "'").trim();
-      }
-
       // Extract og:site_name
       const siteNameMatch = html.match(/<meta[^>]*property=["']og:site_name["'][^>]*content=["']([^"']+)["']/i);
       if (siteNameMatch?.[1]) siteName = siteNameMatch[1].trim();
+
+      // --- Summary extraction: prefer in-body TL;DR/Summary sections over og:description ---
+
+      // Strip scripts/styles for body text extraction
+      const bodyText = html
+        .replace(/<script[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[\s\S]*?<\/style>/gi, "");
+
+      // Look for TL;DR or Summary sections in the page body
+      // Match patterns like: "TL;DR" or "TLDR" or "Summary" followed by content
+      const tldrPatterns = [
+        // TL;DR as a heading followed by paragraph(s)
+        /<(?:h[1-6]|strong|b)[^>]*>\s*(?:TL;?\s*DR|TLDR)\s*:?\s*<\/(?:h[1-6]|strong|b)>\s*(?:<[^>]*>)*\s*([\s\S]*?)(?=<(?:h[1-6]|hr|section|div\s+class))/i,
+        // TL;DR inline with colon: "TL;DR: some text" or "TL;DR\nsome text"
+        /(?:TL;?\s*DR|TLDR)\s*:?\s*(?:<\/[^>]+>\s*)?(?:<[^>]*>\s*)*([\s\S]*?)(?=<(?:h[1-6]|hr|section)|$)/i,
+      ];
+
+      let tldrText: string | null = null;
+      for (const pattern of tldrPatterns) {
+        const match = bodyText.match(pattern);
+        if (match?.[1]) {
+          // Strip HTML tags and clean up
+          const cleaned = match[1]
+            .replace(/<[^>]+>/g, " ")
+            .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+            .replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&#x27;/g, "'")
+            .replace(/\s+/g, " ")
+            .trim();
+          // Only use if it's a meaningful length
+          if (cleaned.length > 30 && cleaned.length < 2000) {
+            tldrText = cleaned;
+            break;
+          }
+        }
+      }
+
+      // Priority: TL;DR from body > og:description > meta description
+      if (tldrText) {
+        description = tldrText;
+      } else {
+        const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
+        if (ogDescMatch?.[1]) {
+          description = ogDescMatch[1]
+            .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#039;/g, "'").trim();
+        }
     } catch (parseError) {
       console.error("Parse error:", parseError);
     }
