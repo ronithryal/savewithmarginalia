@@ -1,15 +1,12 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowLeft } from "lucide-react";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import TagInput from "@/components/TagInput";
-import DOMPurify from "dompurify";
 import ArticleContent from "@/components/ArticleContent";
 import AddQuoteForm from "@/components/AddQuoteForm";
 import QuotesList from "@/components/QuotesList";
