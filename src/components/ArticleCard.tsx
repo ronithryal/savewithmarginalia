@@ -48,7 +48,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
 
     return (
       <div
-        className={`bg-article-card border border-article-card-border rounded-lg overflow-hidden ${
+        className={`group bg-article-card border border-article-card-border rounded-lg overflow-hidden ${
           fullWidth ? "max-w-[680px] mx-auto" : ""
         }`}
       >
@@ -64,7 +64,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
               {onDelete && (
                 <button
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(article.id); }}
-                  className="text-muted-foreground hover:text-destructive transition-colors p-0.5"
+                  className="text-muted-foreground hover:text-destructive transition-colors p-0.5 opacity-0 group-hover:opacity-100"
                   aria-label="Delete article"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -110,7 +110,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
   // Standard / LinkedIn card
   return (
     <div
-      className={`bg-article-card border border-article-card-border rounded-lg overflow-hidden ${
+      className={`group bg-article-card border border-article-card-border rounded-lg overflow-hidden ${
         fullWidth ? "max-w-[680px] mx-auto" : ""
       }`}
     >
@@ -136,7 +136,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
           {onDelete && (
             <button
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(article.id); }}
-              className="text-muted-foreground hover:text-destructive transition-colors p-0.5"
+              className="text-muted-foreground hover:text-destructive transition-colors p-0.5 opacity-0 group-hover:opacity-100"
               aria-label="Delete article"
             >
               <Trash2 className="h-3.5 w-3.5" />
