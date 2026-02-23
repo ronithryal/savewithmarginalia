@@ -1,38 +1,17 @@
-import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
-import { formatDistanceToNow } from "date-fns";
 import { ArrowLeft } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import TagInput from "@/components/TagInput";
-import ArticleContent from "@/components/ArticleContent";
+import ArticleCard from "@/components/ArticleCard";
 import AddQuoteForm from "@/components/AddQuoteForm";
 import QuotesList from "@/components/QuotesList";
 
 const ArticleDetail = () => {
   const { user } = useAuth();
   const { id } = useParams<{ id: string }>();
-  const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [retrying, setRetrying] = useState(false);
-
-  const handleRetryParse = async () => {
-    if (!id) return;
-    setRetrying(true);
-    try {
-      const { error } = await supabase.functions.invoke("parse-article", {
-        body: { article_id: id },
-      });
-      if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ["article", id] });
-      toast({ title: "Content refreshed" });
-    } catch (err: any) {
-      toast({ title: "Parse failed", description: err.message, variant: "destructive" });
-    }
-    setRetrying(false);
-  };
 
   const { data: article } = useQuery({
     queryKey: ["article", id],
@@ -101,16 +80,9 @@ const ArticleDetail = () => {
         <ArrowLeft className="h-3.5 w-3.5" /> Back to articles
       </Link>
 
-      <header className="mb-4">
-        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground mb-2">
-          {article.title || "Untitled article"}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {article.source_domain} · {formatDistanceToNow(new Date(article.created_at), { addSuffix: true })}
-        </p>
-      </header>
+      <ArticleCard article={article} fullWidth />
 
-      <div className="mb-6">
+      <div className="mt-6 mb-6">
         <TagInput
           attachedTagIds={articleTagIds ?? []}
           onAttach={handleAttachArticleTag}
@@ -118,17 +90,9 @@ const ArticleDetail = () => {
         />
       </div>
 
-      {/* Divider between meta and content */}
       <div className="border-t border-border mb-6" />
 
-      {/* Reader section */}
-      {/* TODO: Add highlight-to-quote interactions when the user selects text */}
-      <ArticleContent
-        contentText={article.content_text}
-        retrying={retrying}
-        onRetry={handleRetryParse}
-      />
-
+      {/* TODO: browser extension and mobile share sheet will populate quote text at save time */}
       <AddQuoteForm articleId={id!} userId={user?.id} />
 
       <QuotesList quotes={quotes} articleId={id!} />

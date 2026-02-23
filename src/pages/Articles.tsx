@@ -2,8 +2,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { formatDistanceToNow } from "date-fns";
-import { ExternalLink } from "lucide-react";
+import ArticleCard from "@/components/ArticleCard";
 
 const Articles = () => {
   const { user } = useAuth();
@@ -21,15 +20,8 @@ const Articles = () => {
     enabled: !!user,
   });
 
-  const displayTitle = (article: { title: string; url: string }) => {
-    if (!article.title || article.title === article.url || article.title.trim() === "") {
-      return "Untitled article";
-    }
-    return article.title;
-  };
-
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16 animate-fade-in">
+    <div className="mx-auto max-w-5xl px-6 py-16 animate-fade-in">
       <h1 className="font-display text-3xl font-bold tracking-tight text-foreground mb-8">
         Articles
       </h1>
@@ -42,22 +34,10 @@ const Articles = () => {
         </p>
       )}
 
-      <div className="divide-y divide-border">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {articles?.map((article) => (
-          <Link
-            key={article.id}
-            to={`/articles/${article.id}`}
-            className="flex items-start justify-between py-4 group"
-          >
-            <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-medium text-foreground group-hover:text-accent transition-colors truncate">
-                {displayTitle(article)}
-              </h3>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {article.source_domain} · {formatDistanceToNow(new Date(article.created_at), { addSuffix: true })}
-              </p>
-            </div>
-            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity ml-3 mt-0.5 flex-shrink-0" />
+          <Link key={article.id} to={`/articles/${article.id}`}>
+            <ArticleCard article={article} />
           </Link>
         ))}
       </div>
