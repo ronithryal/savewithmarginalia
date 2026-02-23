@@ -39,13 +39,23 @@ interface OgResult {
   url: string;
 }
 
+/** Clean t.co and pic.twitter.com shortlinks from tweet text */
+function cleanTweetText(text: string): string {
+  return text
+    .replace(/https?:\/\/t\.co\/\S+/g, "")
+    .replace(/pic\.twitter\.com\/\S+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Extract tweet text from the oEmbed html field (text inside <p> tags) */
 function extractTweetText(html: string): string | null {
   try {
     const doc = new DOMParser().parseFromString(html, "text/html");
     if (!doc) return null;
     const p = doc.querySelector("p");
-    return p?.textContent?.trim() || null;
+    const raw = p?.textContent?.trim() || null;
+    return raw ? cleanTweetText(raw) : null;
   } catch {
     return null;
   }
