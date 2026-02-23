@@ -1,0 +1,1 @@
+DELETE FROM articles WHERE id IN ('5ec58ac8-a988-4e3d-82c3-bedc7bdb5604', 'b393fe6b-766e-46a7-b8db-098354717009', '0c52e6d7-012a-4bfb-ade8-e6e210a4af8e')
