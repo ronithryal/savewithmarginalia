@@ -132,7 +132,7 @@ function extractOgFromHtml(html: string, originalUrl: string): OgResult {
 async function fetchTwitterOgImage(tweetUrl: string): Promise<string | null> {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const resp = await fetch(tweetUrl, {
       headers: {
         "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
@@ -140,16 +140,27 @@ async function fetchTwitterOgImage(tweetUrl: string): Promise<string | null> {
         "Accept-Language": "en-US,en;q=0.5",
       },
       signal: controller.signal,
+      redirect: "follow",
     });
     clearTimeout(timeout);
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      console.error("OG image fetch HTTP error:", resp.status);
+      return null;
+    }
     const html = await resp.text();
     const doc = new DOMParser().parseFromString(html, "text/html");
     if (!doc) return null;
-    return doc.querySelector(`meta[property='og:image']`)?.getAttribute("content") ||
-           doc.querySelector(`meta[name='twitter:image']`)?.getAttribute("content") ||
-           null;
-  } catch {
+    const img = doc.querySelector(`meta[property='og:image']`)?.getAttribute("content") ||
+                doc.querySelector(`meta[name='twitter:image']`)?.getAttribute("content") ||
+                null;
+    // Only return fully resolved https:// URLs, never t.co or pic.twitter.com
+    if (img && img.startsWith("https://") && !img.includes("t.co/") && !img.includes("pic.twitter.com/")) {
+      return img;
+    }
+    console.error("OG image not found or invalid:", img);
+    return null;
+  } catch (err) {
+    console.error("OG image fetch failed:", err);
     return null;
   }
 }
