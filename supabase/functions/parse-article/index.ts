@@ -23,12 +23,78 @@ function isLinkedInUrl(url: string): boolean {
   return /^https?:\/\/(www\.)?linkedin\.com\//i.test(url);
 }
 
+function inferLinkedInLabel(url: string): string {
+  if (/\/posts\//i.test(url)) return "LinkedIn Post";
+  if (/\/in\//i.test(url)) return "LinkedIn Profile";
+  if (/\/company\//i.test(url)) return "LinkedIn Company Page";
+  if (/\/articles?\//i.test(url)) return "LinkedIn Article";
+  return "LinkedIn Post";
+}
+
 interface OgResult {
   title: string | null;
   description: string | null;
   image: string | null;
   source: string;
   url: string;
+}
+
+/** Extract tweet text from the oEmbed html field (text inside <p> tags) */
+function extractTweetText(html: string): string | null {
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    if (!doc) return null;
+    const p = doc.querySelector("p");
+    return p?.textContent?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Fetch tweet data via Twitter's free oEmbed API */
+async function fetchTwitterOEmbed(tweetUrl: string): Promise<OgResult> {
+  const fallbackHandle = tweetUrl.match(/(?:twitter\.com|x\.com)\/([^/?#]+)/i);
+  const fallbackUsername = fallbackHandle ? `@${fallbackHandle[1]}` : null;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const oembedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(tweetUrl)}&omit_script=true&dnt=true`;
+    const resp = await fetch(oembedUrl, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!resp.ok) throw new Error(`oEmbed HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    const authorName = data.author_name || null;
+    const authorUrl: string = data.author_url || "";
+    const handleMatch = authorUrl.match(/\/([^/]+)\/?$/);
+    const handle = handleMatch ? `@${handleMatch[1]}` : fallbackUsername;
+
+    const title = authorName && handle
+      ? `${authorName} (${handle})`
+      : authorName || handle || "Tweet";
+
+    const tweetText = data.html ? extractTweetText(data.html) : null;
+
+    return {
+      title,
+      description: tweetText,
+      image: null, // oEmbed doesn't return images; we'll try OG as fallback
+      source: "x.com",
+      url: tweetUrl,
+    };
+  } catch (err) {
+    console.error("Twitter oEmbed failed:", err);
+    return {
+      title: fallbackUsername || "Tweet",
+      description: null,
+      image: null,
+      source: "x.com",
+      url: tweetUrl,
+    };
+  }
 }
 
 function extractOgFromHtml(html: string, originalUrl: string): OgResult {
@@ -47,11 +113,35 @@ function extractOgFromHtml(html: string, originalUrl: string): OgResult {
   const image = getMeta("og:image") ?? getMeta("twitter:image") ?? null;
   const siteName = getMeta("og:site_name") ?? null;
   const canonicalUrl = getMeta("og:url") ?? originalUrl;
-
-  const isTwitter = isTwitterUrl(originalUrl);
-  const source = isTwitter ? "x.com" : (siteName ?? domainFrom(originalUrl));
+  const source = siteName ?? domainFrom(originalUrl);
 
   return { title, description, image, source, url: canonicalUrl };
+}
+
+/** Try fetching OG image for a tweet URL (X does serve og:image) */
+async function fetchTwitterOgImage(tweetUrl: string): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    const resp = await fetch(tweetUrl, {
+      headers: {
+        "User-Agent": "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!resp.ok) return null;
+    const html = await resp.text();
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    if (!doc) return null;
+    return doc.querySelector(`meta[property='og:image']`)?.getAttribute("content") ||
+           doc.querySelector(`meta[name='twitter:image']`)?.getAttribute("content") ||
+           null;
+  } catch {
+    return null;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -99,19 +189,50 @@ Deno.serve(async (req) => {
     }
 
     const articleUrl: string = article.url;
-    const domain = domainFrom(articleUrl);
 
-    // LinkedIn blocks all crawlers — skip fetch entirely
-    // TODO: LinkedIn requires authenticated API access for rich previews
+    // ─── LinkedIn: graceful fallback, no fetch ───
     if (isLinkedInUrl(articleUrl)) {
-      const result = { title: "LinkedIn Post", description: null, image: null, source: "linkedin.com", url: articleUrl };
-      await client.from("articles").update({ title: "LinkedIn Post", source_domain: "linkedin.com" }).eq("id", article_id);
-      return new Response(JSON.stringify({ success: true, ...result }), {
+      const label = inferLinkedInLabel(articleUrl);
+      await client.from("articles").update({
+        title: label,
+        source_domain: "linkedin.com",
+      }).eq("id", article_id);
+
+      return new Response(JSON.stringify({ success: true, title: label, description: null, image: null, source: "linkedin.com", url: articleUrl }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    let og: OgResult = { title: null, description: null, image: null, source: domain, url: articleUrl };
+    // ─── Twitter/X: use oEmbed API + OG image ───
+    if (isTwitterUrl(articleUrl)) {
+      const [oembed, ogImage] = await Promise.all([
+        fetchTwitterOEmbed(articleUrl),
+        fetchTwitterOgImage(articleUrl),
+      ]);
+
+      const updates: Record<string, unknown> = {
+        source_domain: "x.com",
+      };
+      if (oembed.title) updates.title = oembed.title;
+      if (oembed.description) updates.content_text = oembed.description;
+      if (ogImage) updates.preview_image_url = ogImage;
+
+      await client.from("articles").update(updates).eq("id", article_id);
+
+      return new Response(JSON.stringify({
+        success: true,
+        title: oembed.title,
+        description: oembed.description,
+        image: ogImage,
+        source: "x.com",
+        url: articleUrl,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ─── Standard articles: OG fetch ───
+    let og: OgResult = { title: null, description: null, image: null, source: domainFrom(articleUrl), url: articleUrl };
 
     try {
       const controller = new AbortController();
@@ -132,10 +253,8 @@ Deno.serve(async (req) => {
       og = extractOgFromHtml(html, articleUrl);
     } catch (err) {
       console.error("Fetch failed for", articleUrl, err);
-      // og stays as the fallback with nulls + domain
     }
 
-    // Update article record with extracted data
     const updates: Record<string, unknown> = {};
     if (og.title) updates.title = og.title;
     if (og.image) updates.preview_image_url = og.image;
