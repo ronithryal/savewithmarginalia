@@ -9,6 +9,70 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
+const NarrativeSection = ({ user }: { user: any }) => {
+  const { data: stats } = useQuery({
+    queryKey: ["home-stats"],
+    queryFn: async () => {
+      const [articles, quotes, tags] = await Promise.all([
+        supabase.from("articles").select("id", { count: "exact", head: true }),
+        supabase.from("quotes").select("id", { count: "exact", head: true }),
+        supabase.from("tags").select("id", { count: "exact", head: true }),
+      ]);
+      return {
+        articles: articles.count ?? 0,
+        quotes: quotes.count ?? 0,
+        tags: tags.count ?? 0,
+      };
+    },
+    enabled: !!user,
+  });
+
+  return (
+    <section className="py-16 animate-fade-in">
+      <p className="text-xs tracking-widest uppercase text-muted-foreground mb-4">
+        What is Marginalia
+      </p>
+
+      <h2 className="font-display text-3xl sm:text-4xl font-bold tracking-tight text-foreground leading-tight mb-8">
+        Your reading life, organized and alive.
+      </h2>
+
+      <div className="max-w-[600px] space-y-5 mb-16">
+        <p className="text-base text-muted-foreground leading-relaxed">
+          Most reading tools are graveyards. You save something, it disappears into a list
+          you never return to. Marginalia is different — every article and quote you save
+          becomes part of a living library that surfaces connections, sparks questions,
+          and gets smarter about what you care about the more you use it.
+        </p>
+        <p className="text-base text-muted-foreground leading-relaxed">
+          Save anything. Highlight what matters. Ask questions across everything
+          you've ever read. Discover what to read next based on your actual taste —
+          not an algorithm's guess.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-8">
+        <div className="border-t border-border pt-4">
+          <p className="font-display text-3xl font-bold text-foreground">
+            {stats ? stats.articles + stats.quotes : "—"}
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">saved to your library</p>
+        </div>
+        <div className="border-t border-border pt-4">
+          <p className="font-display text-3xl font-bold text-foreground">
+            {stats ? stats.tags : "—"}
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">topics you're tracking</p>
+        </div>
+        <div className="border-t border-border pt-4">
+          <p className="font-display text-3xl font-bold text-foreground">Chat</p>
+          <p className="text-sm text-muted-foreground mt-1">your AI thinking partner</p>
+        </div>
+      </div>
+    </section>
+  );
+};
+
 const Index = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -153,6 +217,8 @@ const Index = () => {
           </div>
         )}
       </section>
+
+      <NarrativeSection user={user} />
     </div>
   );
 };
