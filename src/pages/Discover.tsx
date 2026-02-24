@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { RefreshCw, ExternalLink, BookmarkPlus, Link2 } from "lucide-react";
+import { RefreshCw, ExternalLink, BookmarkPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,7 +19,38 @@ interface ExternalItem {
   source?: string;
   matchedTag?: string;
   creatorLabel?: string;
-  meta?: string; // e.g. "142 points" or author name
+  meta?: string;
+}
+
+interface RedditItem {
+  title: string;
+  link: string;
+  score: number;
+  subreddit: string;
+  pubDate: string;
+}
+
+// --- Blocked domains for HN ---
+const BLOCKED_DOMAINS = new Set([
+  "github.com", "gitlab.com", "amazon.com", "goodreads.com",
+  "amzn.to", "archive.org", "wikipedia.org", "youtube.com", "reddit.com",
+]);
+
+const BLOCKED_TITLE_PREFIXES = [
+  "ask hn:", "show hn:", "tell hn:", "launch hn:", "hiring:",
+];
+
+function filterHNHit(h: any): boolean {
+  if (!h.url) return false;
+  if (h.url.toLowerCase().endsWith(".pdf")) return false;
+  try {
+    const host = new URL(h.url).hostname.replace("www.", "");
+    if (BLOCKED_DOMAINS.has(host)) return false;
+  } catch { return false; }
+  const titleLower = (h.title || "").toLowerCase();
+  if (BLOCKED_TITLE_PREFIXES.some(p => titleLower.startsWith(p))) return false;
+  if (/\bbook\b/i.test(h.title) || /\brepo\b/i.test(h.title)) return false;
+  return true;
 }
 
 // --- HN Algolia ---
@@ -27,12 +58,13 @@ async function fetchHNForTag(keyword: string): Promise<ExternalItem[]> {
   try {
     const q = encodeURIComponent(keyword);
     const res = await fetch(
-      `https://hn.algolia.com/api/v1/search_by_date?tags=story&query=${q}&numericFilters=points>10&hitsPerPage=5`
+      `https://hn.algolia.com/api/v1/search_by_date?tags=story&query=${q}&numericFilters=points>10&hitsPerPage=15`
     );
     if (!res.ok) return [];
     const json = await res.json();
     return (json.hits ?? [])
-      .filter((h: any) => h.url) // skip Ask HN etc
+      .filter(filterHNHit)
+      .slice(0, 3)
       .map((h: any) => ({
         title: h.title || "Untitled",
         link: h.url,
@@ -69,6 +101,68 @@ async function fetchDevToForTag(keyword: string): Promise<ExternalItem[]> {
   }
 }
 
+// --- Lobste.rs ---
+async function fetchLobstersForTag(keyword: string): Promise<ExternalItem[]> {
+  try {
+    const tag = keyword.toLowerCase().replace(/\s+/g, "-");
+    const res = await fetch(`https://lobste.rs/t/${encodeURIComponent(tag)}.json`);
+    if (!res.ok) return [];
+    const json = await res.json();
+    return (json ?? [])
+      .filter((p: any) => {
+        if (!p.url) return false;
+        try {
+          const host = new URL(p.url).hostname.replace("www.", "");
+          if (host === "github.com" || host === "gitlab.com") return false;
+        } catch { return false; }
+        return true;
+      })
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 3)
+      .map((p: any) => ({
+        title: p.title || "Untitled",
+        link: p.url,
+        pubDate: p.created_at || "",
+        source: "Lobsters",
+        meta: `${p.score ?? 0} points`,
+        matchedTag: keyword,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+// --- Reddit subreddit mapping ---
+const REDDIT_TAG_MAP: Record<string, string[]> = {
+  "politics": ["politics", "geopolitics"],
+  "history": ["history", "AskHistorians"],
+  "ai": ["MachineLearning", "artificial"],
+  "ai agents": ["MachineLearning", "artificial"],
+  "founders": ["startups", "Entrepreneur"],
+  "software-engineering": ["programming", "ExperiencedDevs"],
+  "crypto": ["CryptoCurrency", "ethereum"],
+  "web3": ["CryptoCurrency", "ethereum"],
+};
+
+function getSubredditsForTags(tags: { id: string; name: string }[]): string[] {
+  const subs = new Set<string>();
+  for (const tag of tags) {
+    const key = tag.name.toLowerCase();
+    const mapped = REDDIT_TAG_MAP[key];
+    if (mapped) {
+      mapped.forEach(s => subs.add(s));
+    } else {
+      subs.add("worldnews");
+    }
+  }
+  return Array.from(subs);
+}
+
+function formatScore(score: number): string {
+  if (score >= 1000) return `${(score / 1000).toFixed(1).replace(/\.0$/, "")}k points`;
+  return `${score} points`;
+}
+
 const Discover = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -88,7 +182,7 @@ const Discover = () => {
     enabled: !!user,
   });
 
-  // Get top 5 most-used tags (we'll use top 3 for trending)
+  // Get top 3 most-used tags
   const { data: topTags } = useQuery({
     queryKey: ["discover-top-tags", refreshKey],
     queryFn: async () => {
@@ -129,7 +223,7 @@ const Discover = () => {
     enabled: !!user,
   });
 
-  // Trending: HN + DEV.to per tag
+  // Trending: HN + Lobsters + DEV.to per tag
   const { data: trendingItems, isLoading: loadingTrending } = useQuery({
     queryKey: ["discover-trending", topTags, savedUrls, refreshKey],
     queryFn: async () => {
@@ -140,12 +234,13 @@ const Discover = () => {
 
       await Promise.all(
         topTags.map(async (tag) => {
-          const [hnItems, devItems] = await Promise.all([
+          const [hnItems, lobsterItems, devItems] = await Promise.all([
             fetchHNForTag(tag.name),
+            fetchLobstersForTag(tag.name),
             fetchDevToForTag(tag.name),
           ]);
 
-          const merged = [...hnItems, ...devItems]
+          const merged = [...hnItems, ...lobsterItems, ...devItems]
             .sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
 
           let count = 0;
@@ -166,6 +261,39 @@ const Discover = () => {
     enabled: !!user && !!topTags && topTags.length > 0 && !!savedUrls,
   });
 
+  // Reddit discussions via edge function
+  const { data: redditItems, isLoading: loadingReddit } = useQuery({
+    queryKey: ["discover-reddit", topTags, savedUrls, refreshKey],
+    queryFn: async () => {
+      if (!topTags || topTags.length === 0 || !savedUrls) return [];
+      const subreddits = getSubredditsForTags(topTags);
+
+      const { data, error } = await supabase.functions.invoke("fetch-reddit", {
+        body: { subreddits },
+      });
+
+      if (error || !Array.isArray(data)) return [];
+
+      const items: RedditItem[] = [];
+      const seenUrls = new Set<string>();
+
+      for (const post of data) {
+        if (!post.url || seenUrls.has(post.url) || savedUrls.has(post.url)) continue;
+        seenUrls.add(post.url);
+        items.push({
+          title: post.title,
+          link: post.url,
+          score: post.score,
+          subreddit: post.subreddit,
+          pubDate: new Date(post.created_utc * 1000).toISOString(),
+        });
+      }
+
+      return items;
+    },
+    enabled: !!user && !!topTags && topTags.length > 0 && !!savedUrls,
+  });
+
   // Get user feeds
   const { data: userFeeds } = useQuery({
     queryKey: ["user-feeds"],
@@ -179,7 +307,7 @@ const Discover = () => {
     enabled: !!user,
   });
 
-  // From your favorite creators (unchanged RSS logic for user feeds)
+  // From your favorite creators
   const { data: creatorItems, isLoading: loadingCreators } = useQuery({
     queryKey: ["discover-creators", userFeeds, savedUrls, refreshKey],
     queryFn: async () => {
@@ -246,11 +374,12 @@ const Discover = () => {
     queryClient.invalidateQueries({ queryKey: ["discover-top-tags"] });
     queryClient.invalidateQueries({ queryKey: ["discover-saved-urls"] });
     queryClient.invalidateQueries({ queryKey: ["discover-trending"] });
+    queryClient.invalidateQueries({ queryKey: ["discover-reddit"] });
     queryClient.invalidateQueries({ queryKey: ["discover-creators"] });
     queryClient.invalidateQueries({ queryKey: ["discover-unread"] });
   };
 
-  const handleSaveExternal = async (item: ExternalItem) => {
+  const handleSaveExternal = async (item: { link: string; title: string; thumbnail?: string }) => {
     if (!user || savingUrl) return;
     setSavingUrl(item.link);
     try {
@@ -327,7 +456,7 @@ const Discover = () => {
         </div>
       ) : (
         <>
-          {/* Section 1: Trending in your interests */}
+          {/* Section 1: Trending in your interests (HN + Lobsters + DEV.to) */}
           <section className="mb-12">
             <h2 className="font-display text-xl font-semibold text-foreground mb-4">
               Trending in your interests
@@ -363,7 +492,41 @@ const Discover = () => {
             )}
           </section>
 
-          {/* Section 2: From your favorite creators */}
+          {/* Section 2: Discussions (Reddit) */}
+          <section className="mb-12">
+            <h2 className="font-display text-xl font-semibold text-foreground mb-4">
+              Discussions
+            </h2>
+            {loadingReddit ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="rounded-lg border border-border overflow-hidden">
+                    <div className="p-4 space-y-2">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : redditItems && redditItems.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {redditItems.map((item) => (
+                  <RedditCard
+                    key={item.link}
+                    item={item}
+                    onSave={() => handleSaveExternal(item)}
+                    saving={savingUrl === item.link}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm py-6">
+                Nothing new right now — check back later.
+              </p>
+            )}
+          </section>
+
+          {/* Section 3: From your favorite creators */}
           {userFeeds && userFeeds.length > 0 && (
             <section className="mb-12">
               <h2 className="font-display text-xl font-semibold text-foreground mb-4">
@@ -401,7 +564,7 @@ const Discover = () => {
             </section>
           )}
 
-          {/* Section 3: From your reading list */}
+          {/* Section 4: From your reading list */}
           {unreadArticles && unreadArticles.length > 0 && (
             <section>
               <h2 className="font-display text-xl font-semibold text-foreground mb-4">
@@ -426,9 +589,11 @@ const Discover = () => {
           )}
 
           {(!trendingItems || trendingItems.length === 0) &&
+            (!redditItems || redditItems.length === 0) &&
             (!userFeeds || userFeeds.length === 0) &&
             (!unreadArticles || unreadArticles.length === 0) &&
             !loadingTrending &&
+            !loadingReddit &&
             !loadingUnread && (
               <p className="text-muted-foreground text-sm text-center py-12">
                 No recommendations yet. Try tagging some articles to get personalized suggestions.
@@ -440,6 +605,7 @@ const Discover = () => {
   );
 };
 
+// --- ExternalCard (for HN / Lobsters / DEV.to / Creator feeds) ---
 function ExternalCard({
   item,
   badge,
@@ -452,15 +618,7 @@ function ExternalCard({
   saving: boolean;
 }) {
   const formattedDate = (() => {
-    try {
-      return format(new Date(item.pubDate), "MMM d, yyyy");
-    } catch {
-      return "";
-    }
-  })();
-
-  const source = item.source || (() => {
-    try { return new URL(item.link).hostname.replace("www.", ""); }
+    try { return format(new Date(item.pubDate), "MMM d, yyyy"); }
     catch { return ""; }
   })();
 
@@ -500,6 +658,71 @@ function ExternalCard({
           )}
           {formattedDate && (
             <span className="text-[11px]">{formattedDate}</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 mt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs gap-1.5 h-7"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onSave();
+            }}
+            disabled={saving}
+          >
+            <BookmarkPlus className="h-3 w-3" />
+            {saving ? "Saving…" : "Save"}
+          </Button>
+          <a
+            href={item.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-accent hover:underline flex items-center gap-1"
+          >
+            Open <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- RedditCard ---
+function RedditCard({
+  item,
+  onSave,
+  saving,
+}: {
+  item: RedditItem;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  const formattedDate = (() => {
+    try { return format(new Date(item.pubDate), "MMM d, yyyy"); }
+    catch { return ""; }
+  })();
+
+  return (
+    <div className="group bg-[hsl(var(--article-card))] border border-[hsl(var(--article-card-border))] rounded-lg overflow-hidden flex flex-col">
+      <div className="p-4 flex-1 flex flex-col">
+        <Badge variant="outline" className="text-[10px] font-medium w-fit mb-2 text-muted-foreground">
+          r/{item.subreddit}
+        </Badge>
+
+        <h3 className="font-display text-sm font-bold text-foreground leading-snug line-clamp-2 mb-2">
+          {item.title || "Untitled"}
+        </h3>
+
+        <div className="mt-auto flex items-center gap-1.5 text-muted-foreground min-w-0">
+          <span className="text-[11px]">{formatScore(item.score)}</span>
+          {formattedDate && (
+            <>
+              <span className="text-[11px]">·</span>
+              <span className="text-[11px]">{formattedDate}</span>
+            </>
           )}
         </div>
 
