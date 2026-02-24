@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.chat]
 verify_jwt = false
+
+[functions.fetch-reddit]
+verify_jwt = false
