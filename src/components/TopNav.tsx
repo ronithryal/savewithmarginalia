@@ -14,6 +14,7 @@ const TopNav = () => {
     { to: "/articles", label: "Articles", icon: FileText },
     { to: "/quotes", label: "Quotes", icon: BookOpen },
     { to: "/tags", label: "Tags", icon: Hash },
+    { to: "/chat", label: "Chat", icon: null },
     { to: "/settings", label: "Settings", icon: Settings },
   ];
 
