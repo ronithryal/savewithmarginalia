@@ -43,11 +43,50 @@ const Tags = () => {
   const { data: quoteTagCounts } = useQuery({
     queryKey: ["quote-tag-counts"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("quote_tags").select("tag_id");
-      if (error) throw error;
-      const counts: Record<string, number> = {};
-      data.forEach((row) => { counts[row.tag_id] = (counts[row.tag_id] || 0) + 1; });
-      return counts;
+      // Direct quote tags
+      const { data: directTags, error: e1 } = await supabase.from("quote_tags").select("tag_id");
+      if (e1) throw e1;
+
+      // Indirect: quotes whose article has a tag
+      const { data: quotes, error: e2 } = await supabase.from("quotes").select("id, article_id");
+      if (e2) throw e2;
+      const { data: articleTags, error: e3 } = await supabase.from("article_tags").select("article_id, tag_id");
+      if (e3) throw e3;
+
+      const counts: Record<string, Set<string>> = {};
+      // Direct
+      directTags.forEach((row) => {
+        // We don't have quote_id here easily, just count occurrences
+        if (!counts[row.tag_id]) counts[row.tag_id] = new Set();
+      });
+
+      // Build article->tags map
+      const articleTagMap: Record<string, string[]> = {};
+      articleTags.forEach((r) => {
+        if (!articleTagMap[r.article_id]) articleTagMap[r.article_id] = [];
+        articleTagMap[r.article_id].push(r.tag_id);
+      });
+
+      // For each quote, add it to the count of each tag its article has
+      quotes.forEach((q) => {
+        const tags = articleTagMap[q.article_id] || [];
+        tags.forEach((tagId) => {
+          if (!counts[tagId]) counts[tagId] = new Set();
+          counts[tagId].add(q.id);
+        });
+      });
+
+      // Also add direct quote_tags quote counts
+      // We need quote_id for direct tags too
+      const { data: directWithQuote } = await supabase.from("quote_tags").select("tag_id, quote_id");
+      (directWithQuote ?? []).forEach((row) => {
+        if (!counts[row.tag_id]) counts[row.tag_id] = new Set();
+        counts[row.tag_id].add(row.quote_id);
+      });
+
+      const result: Record<string, number> = {};
+      Object.entries(counts).forEach(([tagId, set]) => { result[tagId] = set.size; });
+      return result;
     },
     enabled: !!user,
   });

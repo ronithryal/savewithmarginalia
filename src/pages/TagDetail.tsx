@@ -53,17 +53,34 @@ const TagDetail = () => {
   const { data: quotes } = useQuery({
     queryKey: ["tag-quotes", tag?.id],
     queryFn: async () => {
-      const { data: quoteTags, error } = await supabase
+      const quoteIdSet = new Set<string>();
+
+      // Direct quote tags
+      const { data: quoteTags } = await supabase
         .from("quote_tags")
         .select("quote_id")
         .eq("tag_id", tag!.id);
-      if (error) throw error;
-      if (quoteTags.length === 0) return [];
-      const ids = quoteTags.map((r) => r.quote_id);
+      (quoteTags ?? []).forEach((r) => quoteIdSet.add(r.quote_id));
+
+      // Indirect: quotes belonging to articles with this tag
+      const { data: articleTags } = await supabase
+        .from("article_tags")
+        .select("article_id")
+        .eq("tag_id", tag!.id);
+      const articleIds = (articleTags ?? []).map((r) => r.article_id);
+      if (articleIds.length > 0) {
+        const { data: articleQuotes } = await supabase
+          .from("quotes")
+          .select("id")
+          .in("article_id", articleIds);
+        (articleQuotes ?? []).forEach((r) => quoteIdSet.add(r.id));
+      }
+
+      if (quoteIdSet.size === 0) return [];
       const { data: qts } = await supabase
         .from("quotes")
         .select("*, articles(id, title, source_domain)")
-        .in("id", ids)
+        .in("id", Array.from(quoteIdSet))
         .order("created_at", { ascending: false });
       return qts ?? [];
     },
