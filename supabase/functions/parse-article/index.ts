@@ -42,9 +42,10 @@ interface OgResult {
 /** Clean t.co and pic.twitter.com shortlinks from tweet text */
 function cleanTweetText(text: string): string {
   return text
-    .replace(/https?:\/\/t\.co\/\S+/g, "")
-    .replace(/pic\.twitter\.com\/\S+/g, "")
-    .replace(/\s+/g, " ")
+    .replace(/https?:\/\/t\.co\/\S+/gi, "")
+    .replace(/pic\.twitter\.com\/\S+/gi, "")
+    .replace(/pic\.x\.com\/\S+/gi, "")
+    .replace(/\s{2,}/g, " ")
     .trim();
 }
 
