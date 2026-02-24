@@ -13,6 +13,7 @@ import Quotes from "./pages/Quotes";
 import Tags from "./pages/Tags";
 import Settings from "./pages/Settings";
 import ShareTarget from "./pages/ShareTarget";
+import SearchPage from "./pages/Search";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const AppRoutes = () => {
         <Route path="/quotes" element={<Quotes />} />
         <Route path="/tags" element={<Tags />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/search" element={<SearchPage />} />
         <Route path="/share-target" element={<ShareTarget />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
