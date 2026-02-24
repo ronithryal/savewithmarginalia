@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
-import { Hash, Trash2 } from "lucide-react";
+import { Hash, Trash2, MessageSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const Tags = () => {
@@ -91,6 +91,33 @@ const Tags = () => {
     enabled: !!user,
   });
 
+  const { data: threadTagCounts } = useQuery({
+    queryKey: ["thread-tag-counts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("chat_session_tags" as any)
+        .select("tag_id, session_id");
+      if (error) throw error;
+      // Only count bookmarked sessions
+      const sessionIds = [...new Set((data as any[]).map((r) => r.session_id))];
+      if (sessionIds.length === 0) return {};
+      const { data: sessions } = await supabase
+        .from("chat_sessions" as any)
+        .select("id")
+        .in("id", sessionIds)
+        .eq("is_bookmarked", true);
+      const bookmarkedIds = new Set((sessions as any[] ?? []).map((s) => s.id));
+      const counts: Record<string, number> = {};
+      (data as any[]).forEach((row) => {
+        if (bookmarkedIds.has(row.session_id)) {
+          counts[row.tag_id] = (counts[row.tag_id] || 0) + 1;
+        }
+      });
+      return counts;
+    },
+    enabled: !!user,
+  });
+
   const handleAddTag = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTag.trim() || !user) return;
@@ -144,21 +171,36 @@ const Tags = () => {
         {tags?.map((tag) => {
           const ac = articleTagCounts?.[tag.id] || 0;
           const qc = quoteTagCounts?.[tag.id] || 0;
+          const tc = threadTagCounts?.[tag.id] || 0;
           return (
             <div key={tag.id} className="flex items-center justify-between py-3 group">
-              <Link to={`/tags/${encodeURIComponent(tag.name)}`} className="flex items-center gap-2 hover:underline">
-                <Hash className="h-3.5 w-3.5 text-muted-foreground" />
+              <Link to={`/tags/${encodeURIComponent(tag.name)}`} className="flex items-center gap-2 hover:underline min-w-0">
+                <Hash className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                 <span className="text-sm font-medium text-foreground">{tag.name}</span>
                 <span className="text-xs text-muted-foreground">
                   — {ac} {ac === 1 ? "article" : "articles"} · {qc} {qc === 1 ? "quote" : "quotes"}
+                  {tc > 0 && (
+                    <> · {tc} {tc === 1 ? "thread" : "threads"}</>
+                  )}
                 </span>
               </Link>
-              <button
-                onClick={() => handleDeleteTag(tag.id)}
-                className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {tc > 0 && (
+                  <Link
+                    to={`/tags/${encodeURIComponent(tag.name)}?filter=threads`}
+                    className="text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-all"
+                    title="View threads"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                  </Link>
+                )}
+                <button
+                  onClick={() => handleDeleteTag(tag.id)}
+                  className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           );
         })}
