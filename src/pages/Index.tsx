@@ -37,10 +37,28 @@ const Index = () => {
     setSaving(true);
 
     try {
-      const domain = new URL(url).hostname.replace("www.", "");
+      const trimmedUrl = url.trim();
+
+      // Check for duplicate
+      const { data: existing } = await supabase
+        .from("articles")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("url", trimmedUrl)
+        .maybeSingle();
+
+      if (existing) {
+        setUrl("");
+        setSaving(false);
+        toast({ title: "You already saved this — here it is." });
+        navigate(`/articles/${existing.id}`);
+        return;
+      }
+
+      const domain = new URL(trimmedUrl).hostname.replace("www.", "");
       const { data, error } = await supabase.from("articles").insert({
         user_id: user.id,
-        url: url.trim(),
+        url: trimmedUrl,
         title: "Untitled article",
         source_domain: domain,
         preview_image_url: null,
@@ -48,7 +66,6 @@ const Index = () => {
       }).select().single();
       if (error) throw error;
 
-      // Trigger background parse then refresh article data
       supabase.functions.invoke("parse-article", {
         body: { article_id: data.id },
       }).then(() => {
