@@ -1,5 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
@@ -75,6 +76,12 @@ const ArticleDetail = () => {
     queryClient.invalidateQueries({ queryKey: ["article-tags", id] });
   };
 
+  const handleTitleEdit = useCallback(async (id: string, newTitle: string) => {
+    await supabase.from("articles").update({ title: newTitle }).eq("id", id);
+    queryClient.invalidateQueries({ queryKey: ["article", id] });
+    queryClient.invalidateQueries({ queryKey: ["articles"] });
+  }, [queryClient]);
+
   if (!article) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-16">
@@ -89,7 +96,7 @@ const ArticleDetail = () => {
         <ArrowLeft className="h-3.5 w-3.5" /> Back to articles
       </Link>
 
-      <ArticleCard article={article} fullWidth />
+      <ArticleCard article={article} fullWidth onTitleEdit={handleTitleEdit} />
 
       <div className="mt-6 mb-6">
         <TagInput

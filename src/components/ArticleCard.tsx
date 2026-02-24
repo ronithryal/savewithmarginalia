@@ -1,5 +1,6 @@
+import { useState, useRef, useEffect } from "react";
 import { format } from "date-fns";
-import { ExternalLink, Link2, Trash2 } from "lucide-react";
+import { ExternalLink, Link2, Trash2, Pencil } from "lucide-react";
 
 interface ArticleCardProps {
   article: {
@@ -13,6 +14,7 @@ interface ArticleCardProps {
   };
   fullWidth?: boolean;
   onDelete?: (id: string) => void;
+  onTitleEdit?: (id: string, newTitle: string) => void;
 }
 
 const XIcon = () => (
@@ -58,7 +60,75 @@ const DeleteButton = ({ onDelete, id }: { onDelete: (id: string) => void; id: st
   </button>
 );
 
-const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps) => {
+function EditableTitle({
+  title,
+  articleId,
+  onTitleEdit,
+  className,
+}: {
+  title: string;
+  articleId: string;
+  onTitleEdit?: (id: string, newTitle: string) => void;
+  className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(title);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  useEffect(() => {
+    setValue(title);
+  }, [title]);
+
+  const commit = () => {
+    setEditing(false);
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== title && onTitleEdit) {
+      onTitleEdit(articleId, trimmed);
+    } else {
+      setValue(title);
+    }
+  };
+
+  if (!onTitleEdit) {
+    return <span className={className}>{title}</span>;
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") { setValue(title); setEditing(false); }
+        }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        className={`${className} bg-transparent border-b border-accent outline-none w-full`}
+      />
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 group/title">
+      <span className={className}>{title}</span>
+      <button
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditing(true); }}
+        className="text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100 group-hover/title:opacity-100 flex-shrink-0"
+        aria-label="Edit title"
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
+    </span>
+  );
+}
+
+const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: ArticleCardProps) => {
   const isTwitter = isTwitterUrl(article.url);
   const isLinkedIn = isLinkedInUrl(article.url);
   const description = article.content_text || "";
@@ -77,11 +147,19 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
 
     return (
       <div className={`group relative bg-[hsl(var(--article-card))] border border-[hsl(var(--article-card-border))] rounded-lg overflow-hidden ${fullWidth ? "max-w-[680px] mx-auto" : ""}`}>
-        {/* Header: Author + X logo */}
         <div className="flex items-start justify-between p-4 pb-0">
           <div className="min-w-0">
             {name && (
-              <p className="font-display text-sm font-bold text-foreground leading-tight truncate">{name}</p>
+              <EditableTitle
+                title={name}
+                articleId={article.id}
+                onTitleEdit={onTitleEdit ? (id) => {
+                  // For Twitter, reconstruct full title with handle
+                  const newFull = handle ? `${name} (${handle})` : name;
+                  // We pass the raw edited name; the parent commit handles it
+                } : undefined}
+                className="font-display text-sm font-bold text-foreground leading-tight truncate"
+              />
             )}
             {handle && (
               <p className="text-xs text-muted-foreground leading-tight mt-0.5">{handle}</p>
@@ -92,7 +170,6 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
           </div>
         </div>
 
-        {/* Tweet text */}
         <div className="px-4 pt-2 pb-3">
           {description ? (
             <p className="text-sm text-foreground leading-relaxed">{description}</p>
@@ -101,7 +178,6 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
           )}
         </div>
 
-        {/* Preview image or media placeholder */}
         {article.preview_image_url ? (
           <div className="px-4 pb-3">
             <div className="w-full max-h-[200px] overflow-hidden rounded-md bg-muted">
@@ -120,7 +196,6 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
           </div>
         )}
 
-        {/* Footer: date + open link */}
         <div className="flex items-center justify-between px-4 pb-3">
           <span className="text-xs text-muted-foreground">{formattedDate}</span>
           <a
@@ -145,20 +220,22 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
 
     return (
       <div className={`group relative bg-[hsl(var(--article-card))] border border-[hsl(var(--article-card-border))] rounded-lg overflow-hidden ${fullWidth ? "max-w-[680px] mx-auto" : ""}`}>
-        {/* Header: label + LinkedIn logo */}
         <div className="flex items-center justify-between p-4 pb-0">
-          <p className="font-display text-sm font-bold text-foreground">{label}</p>
+          <EditableTitle
+            title={label}
+            articleId={article.id}
+            onTitleEdit={onTitleEdit}
+            className="font-display text-sm font-bold text-foreground"
+          />
           <div className="flex-shrink-0 ml-3">
             <LinkedInIcon />
           </div>
         </div>
 
-        {/* Body */}
         <div className="px-4 pt-2 pb-3">
           <p className="text-sm text-muted-foreground">Preview not available for LinkedIn content.</p>
         </div>
 
-        {/* Footer: domain + open link */}
         <div className="flex items-center justify-between px-4 pb-3">
           <span className="text-xs text-muted-foreground">{formattedDate} · linkedin.com</span>
           <a
@@ -177,7 +254,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
     );
   }
 
-  // ─── Standard article card (unchanged) ───
+  // ─── Standard article card ───
   return (
     <div className={`group relative bg-[hsl(var(--article-card))] border border-[hsl(var(--article-card-border))] rounded-lg overflow-hidden ${fullWidth ? "max-w-[680px] mx-auto" : ""}`}>
       {article.preview_image_url && (
@@ -194,7 +271,12 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
 
       <div className="p-4">
         <h3 className="font-display text-base font-bold text-foreground leading-snug line-clamp-2 mb-1">
-          {displayTitle()}
+          <EditableTitle
+            title={displayTitle()}
+            articleId={article.id}
+            onTitleEdit={onTitleEdit}
+            className=""
+          />
         </h3>
 
         {description && (
