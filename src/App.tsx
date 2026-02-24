@@ -17,6 +17,7 @@ import Chat from "./pages/Chat";
 import Discover from "./pages/Discover";
 import ShareTarget from "./pages/ShareTarget";
 import SearchPage from "./pages/Search";
+import Future from "./pages/Future";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -48,6 +49,7 @@ const AppRoutes = () => {
         <Route path="/chat" element={<Chat />} />
         <Route path="/discover" element={<Discover />} />
         <Route path="/search" element={<SearchPage />} />
+        <Route path="/future" element={<Future />} />
         <Route path="/share-target" element={<ShareTarget />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
