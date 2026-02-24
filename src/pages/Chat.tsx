@@ -272,6 +272,15 @@ const Chat = () => {
     [activeSessionId, messages, loading, user, createSession, loadSessions, applySourceTags]
   );
 
+  // Handle opening a specific session from navigation state (e.g. clicking a ThreadCard)
+  useEffect(() => {
+    const state = location.state as { openSessionId?: string } | null;
+    if (state?.openSessionId && chatEnabled === true && user) {
+      setActiveSessionId(state.openSessionId);
+      window.history.replaceState({}, document.title);
+    }
+  }, [chatEnabled, user, location.state]);
+
   // Handle initial message from navigation state (e.g. "Explain this" from article card)
   useEffect(() => {
     const state = location.state as { initialMessage?: string; sourceArticleId?: string; sourceQuoteId?: string } | null;
