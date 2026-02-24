@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import TagInput from "@/components/TagInput";
 import TagSuggestions from "@/components/TagSuggestions";
+import ImageUpload from "@/components/ImageUpload";
 import { useQuery } from "@tanstack/react-query";
 
 interface AddQuoteFormProps {
@@ -17,6 +18,7 @@ const AddQuoteForm = ({ articleId, userId }: AddQuoteFormProps) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [quoteText, setQuoteText] = useState("");
+  const [quoteImageUrl, setQuoteImageUrl] = useState<string | null>(null);
   const [savingQuote, setSavingQuote] = useState(false);
   const [lastSavedQuoteId, setLastSavedQuoteId] = useState<string | null>(null);
   const [lastSavedText, setLastSavedText] = useState("");
@@ -48,7 +50,7 @@ const AddQuoteForm = ({ articleId, userId }: AddQuoteFormProps) => {
 
   const handleSaveQuote = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!quoteText.trim() || !userId || !articleId) return;
+    if ((!quoteText.trim() && !quoteImageUrl) || !userId || !articleId) return;
     setSavingQuote(true);
 
     try {
@@ -58,11 +60,12 @@ const AddQuoteForm = ({ articleId, userId }: AddQuoteFormProps) => {
         text: quoteText.trim(),
         start_offset: null,
         end_offset: null,
-        is_image: false,
-        image_url: null,
+        is_image: !!quoteImageUrl,
+        image_url: quoteImageUrl,
       }).select().single();
       if (error) throw error;
       setQuoteText("");
+      setQuoteImageUrl(null);
       setLastSavedQuoteId(data.id);
       setLastSavedText(data.text);
       queryClient.invalidateQueries({ queryKey: ["article-quotes", articleId] });
@@ -86,11 +89,22 @@ const AddQuoteForm = ({ articleId, userId }: AddQuoteFormProps) => {
             placeholder="Paste or type a quote…"
             value={quoteText}
             onChange={(e) => setQuoteText(e.target.value)}
-            required
             className="min-h-[100px]"
           />
         </div>
-        <Button type="submit" disabled={savingQuote || !quoteText.trim()} className="px-6">
+        {userId && (
+          <div>
+            <label className="text-sm text-muted-foreground mb-1.5 block">Image (optional)</label>
+            <ImageUpload
+              currentUrl={quoteImageUrl}
+              onImageChange={setQuoteImageUrl}
+              userId={userId}
+              folder="quotes"
+              compact
+            />
+          </div>
+        )}
+        <Button type="submit" disabled={savingQuote || (!quoteText.trim() && !quoteImageUrl)} className="px-6">
           {savingQuote ? "…" : "Save quote"}
         </Button>
       </form>
