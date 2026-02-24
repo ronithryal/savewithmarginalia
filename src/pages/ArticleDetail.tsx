@@ -23,6 +23,14 @@ const ArticleDetail = () => {
         .eq("id", id!)
         .single();
       if (error) throw error;
+
+      // Mark as opened
+      supabase
+        .from("articles")
+        .update({ last_opened_at: new Date().toISOString() })
+        .eq("id", id!)
+        .then();
+
       return data;
     },
     enabled: !!user && !!id,
