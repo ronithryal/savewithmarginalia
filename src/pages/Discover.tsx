@@ -23,13 +23,42 @@ interface ExternalItem {
 
 const RSS2JSON_BASE = "https://api.rss2json.com/v1/api.json?rss_url=";
 
-/** Check if a URL is a Google News redirect URL */
-function isGoogleNewsUrl(url: string): boolean {
-  return url.includes("news.google.com/rss/articles/");
+/** Decode a Google News article URL from its base64 article ID */
+function decodeGoogleNewsUrl(gnewsUrl: string): string | null {
+  try {
+    const match = gnewsUrl.match(/\/articles\/([A-Za-z0-9_-]+)/);
+    if (!match) return null;
+    const b64 = match[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const raw = atob(padded);
+
+    let idx = 0;
+    while (idx < raw.length) {
+      const httpIdx = raw.indexOf("http", idx);
+      if (httpIdx === -1) break;
+      let url = "";
+      for (let i = httpIdx; i < raw.length; i++) {
+        const code = raw.charCodeAt(i);
+        if (code >= 33 && code <= 126) {
+          url += raw.charAt(i);
+        } else break;
+      }
+      if ((url.startsWith("http://") || url.startsWith("https://")) &&
+          !url.includes("news.google.com") && !url.includes("googleusercontent.com")) {
+        return url;
+      }
+      idx = httpIdx + 1;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
-/** Resolve a Google News URL via edge function */
+/** Resolve a Google News URL — try client-side decode first, then edge function */
 async function resolveGoogleNewsUrl(gnewsUrl: string): Promise<string> {
+  const decoded = decodeGoogleNewsUrl(gnewsUrl);
+  if (decoded) return decoded;
   try {
     const { data, error } = await supabase.functions.invoke("resolve-url", {
       body: { url: gnewsUrl },
@@ -41,6 +70,10 @@ async function resolveGoogleNewsUrl(gnewsUrl: string): Promise<string> {
   }
 }
 
+function isGoogleNewsUrl(url: string): boolean {
+  return url.includes("news.google.com/rss/articles/");
+}
+
 async function fetchRssFeed(rssUrl: string): Promise<ExternalItem[]> {
   try {
     const res = await fetch(`${RSS2JSON_BASE}${encodeURIComponent(rssUrl)}`);
@@ -49,7 +82,10 @@ async function fetchRssFeed(rssUrl: string): Promise<ExternalItem[]> {
     if (json.status !== "ok" || !json.items) return [];
     return json.items.map((item: any) => {
       const rawLink = item.link || "";
-      const link = rawLink; // Keep original Google News URL; resolved on click
+      // Try to decode Google News URLs immediately
+      const link = rawLink.includes("news.google.com/rss/articles/")
+        ? (decodeGoogleNewsUrl(rawLink) || rawLink)
+        : rawLink;
       // Strip " - Source" suffix from Google News titles
       const rawTitle = item.title || "";
       const title = rawTitle.replace(/\s*-\s*[^-]+$/, "");
