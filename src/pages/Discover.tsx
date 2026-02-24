@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,84 +19,51 @@ interface ExternalItem {
   source?: string;
   matchedTag?: string;
   creatorLabel?: string;
+  meta?: string; // e.g. "142 points" or author name
 }
 
-const RSS2JSON_BASE = "https://api.rss2json.com/v1/api.json?rss_url=";
-
-/** Decode a Google News article URL from its base64 article ID */
-function decodeGoogleNewsUrl(gnewsUrl: string): string | null {
+// --- HN Algolia ---
+async function fetchHNForTag(keyword: string): Promise<ExternalItem[]> {
   try {
-    const match = gnewsUrl.match(/\/articles\/([A-Za-z0-9_-]+)/);
-    if (!match) return null;
-    const b64 = match[1].replace(/-/g, "+").replace(/_/g, "/");
-    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
-    const raw = atob(padded);
-
-    let idx = 0;
-    while (idx < raw.length) {
-      const httpIdx = raw.indexOf("http", idx);
-      if (httpIdx === -1) break;
-      let url = "";
-      for (let i = httpIdx; i < raw.length; i++) {
-        const code = raw.charCodeAt(i);
-        if (code >= 33 && code <= 126) {
-          url += raw.charAt(i);
-        } else break;
-      }
-      if ((url.startsWith("http://") || url.startsWith("https://")) &&
-          !url.includes("news.google.com") && !url.includes("googleusercontent.com")) {
-        return url;
-      }
-      idx = httpIdx + 1;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/** Resolve a Google News URL — try client-side decode first, then edge function */
-async function resolveGoogleNewsUrl(gnewsUrl: string): Promise<string> {
-  const decoded = decodeGoogleNewsUrl(gnewsUrl);
-  if (decoded) return decoded;
-  try {
-    const { data, error } = await supabase.functions.invoke("resolve-url", {
-      body: { url: gnewsUrl },
-    });
-    if (error || !data?.resolved) return gnewsUrl;
-    return data.resolved;
-  } catch {
-    return gnewsUrl;
-  }
-}
-
-function isGoogleNewsUrl(url: string): boolean {
-  return url.includes("news.google.com/rss/articles/");
-}
-
-async function fetchRssFeed(rssUrl: string): Promise<ExternalItem[]> {
-  try {
-    const res = await fetch(`${RSS2JSON_BASE}${encodeURIComponent(rssUrl)}`);
+    const q = encodeURIComponent(keyword);
+    const res = await fetch(
+      `https://hn.algolia.com/api/v1/search_by_date?tags=story&query=${q}&numericFilters=points>10&hitsPerPage=5`
+    );
     if (!res.ok) return [];
     const json = await res.json();
-    if (json.status !== "ok" || !json.items) return [];
-    return json.items.map((item: any) => {
-      const rawLink = item.link || "";
-      // Try to decode Google News URLs immediately
-      const link = rawLink.includes("news.google.com/rss/articles/")
-        ? (decodeGoogleNewsUrl(rawLink) || rawLink)
-        : rawLink;
-      // Strip " - Source" suffix from Google News titles
-      const rawTitle = item.title || "";
-      const title = rawTitle.replace(/\s*-\s*[^-]+$/, "");
-      return {
-        title,
-        link,
-        pubDate: item.pubDate || "",
-        thumbnail: item.thumbnail || item.enclosure?.link || "",
-        source: json.feed?.title || "",
-      };
-    });
+    return (json.hits ?? [])
+      .filter((h: any) => h.url) // skip Ask HN etc
+      .map((h: any) => ({
+        title: h.title || "Untitled",
+        link: h.url,
+        pubDate: h.created_at || "",
+        source: "Hacker News",
+        meta: `${h.points ?? 0} points`,
+        matchedTag: keyword,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+// --- DEV.to ---
+async function fetchDevToForTag(keyword: string): Promise<ExternalItem[]> {
+  try {
+    const tag = keyword.toLowerCase().replace(/\s+/g, "-");
+    const res = await fetch(
+      `https://dev.to/api/articles?tag=${encodeURIComponent(tag)}&per_page=5&top=7`
+    );
+    if (!res.ok) return [];
+    const json = await res.json();
+    return (json ?? []).map((a: any) => ({
+      title: a.title || "Untitled",
+      link: a.url,
+      pubDate: a.published_at || a.created_at || "",
+      thumbnail: a.cover_image || "",
+      source: "DEV.to",
+      meta: a.user?.name || "",
+      matchedTag: keyword,
+    }));
   } catch {
     return [];
   }
@@ -121,7 +88,7 @@ const Discover = () => {
     enabled: !!user,
   });
 
-  // Get top 5 most-used tags
+  // Get top 5 most-used tags (we'll use top 3 for trending)
   const { data: topTags } = useQuery({
     queryKey: ["discover-top-tags", refreshKey],
     queryFn: async () => {
@@ -137,7 +104,7 @@ const Discover = () => {
 
       const sorted = Object.entries(counts)
         .sort(([, a], [, b]) => b - a)
-        .slice(0, 5)
+        .slice(0, 3)
         .map(([id]) => id);
 
       if (sorted.length === 0) return [];
@@ -162,7 +129,7 @@ const Discover = () => {
     enabled: !!user,
   });
 
-  // Section 1: Trending in your interests (external feeds from top tags)
+  // Trending: HN + DEV.to per tag
   const { data: trendingItems, isLoading: loadingTrending } = useQuery({
     queryKey: ["discover-trending", topTags, savedUrls, refreshKey],
     queryFn: async () => {
@@ -173,21 +140,28 @@ const Discover = () => {
 
       await Promise.all(
         topTags.map(async (tag) => {
-          const keyword = encodeURIComponent(tag.name);
-          const rssUrl = `https://news.google.com/rss/search?q=${keyword}&hl=en-US&gl=US&ceid=US:en`;
-          const items = await fetchRssFeed(rssUrl);
-          for (const item of items) {
+          const [hnItems, devItems] = await Promise.all([
+            fetchHNForTag(tag.name),
+            fetchDevToForTag(tag.name),
+          ]);
+
+          const merged = [...hnItems, ...devItems]
+            .sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+
+          let count = 0;
+          for (const item of merged) {
+            if (count >= 3) break;
             if (!item.link || seenUrls.has(item.link) || savedUrls.has(item.link)) continue;
             seenUrls.add(item.link);
-            allItems.push({ ...item, matchedTag: tag.name });
+            allItems.push(item);
+            count++;
           }
         })
       );
 
-      // Sort by pubDate descending, take 6
-      return allItems
-        .sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
-        .slice(0, 6);
+      return allItems.sort(
+        (a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime()
+      );
     },
     enabled: !!user && !!topTags && topTags.length > 0 && !!savedUrls,
   });
@@ -205,7 +179,7 @@ const Discover = () => {
     enabled: !!user,
   });
 
-  // Section 2: From your favorite creators
+  // From your favorite creators (unchanged RSS logic for user feeds)
   const { data: creatorItems, isLoading: loadingCreators } = useQuery({
     queryKey: ["discover-creators", userFeeds, savedUrls, refreshKey],
     queryFn: async () => {
@@ -216,14 +190,31 @@ const Discover = () => {
 
       await Promise.all(
         userFeeds.map(async (feed: any) => {
-          const items = await fetchRssFeed(feed.feed_url);
-          let count = 0;
-          for (const item of items) {
-            if (count >= 3) break;
-            if (!item.link || seenUrls.has(item.link) || savedUrls.has(item.link)) continue;
-            seenUrls.add(item.link);
-            allItems.push({ ...item, creatorLabel: feed.label });
-            count++;
+          try {
+            const res = await fetch(
+              `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.feed_url)}`
+            );
+            if (!res.ok) return;
+            const json = await res.json();
+            if (json.status !== "ok" || !json.items) return;
+            let count = 0;
+            for (const item of json.items) {
+              if (count >= 3) break;
+              const link = item.link || "";
+              if (!link || seenUrls.has(link) || savedUrls.has(link)) continue;
+              seenUrls.add(link);
+              allItems.push({
+                title: item.title || "Untitled",
+                link,
+                pubDate: item.pubDate || "",
+                thumbnail: item.thumbnail || item.enclosure?.link || "",
+                source: json.feed?.title || "",
+                creatorLabel: feed.label,
+              });
+              count++;
+            }
+          } catch {
+            // skip failed feeds
           }
         })
       );
@@ -235,7 +226,7 @@ const Discover = () => {
     enabled: !!user && !!userFeeds && userFeeds.length > 0 && !!savedUrls,
   });
 
-  // Unread articles (last_opened_at is null)
+  // Unread articles
   const { data: unreadArticles, isLoading: loadingUnread } = useQuery({
     queryKey: ["discover-unread", refreshKey],
     queryFn: async () => {
@@ -292,7 +283,6 @@ const Discover = () => {
 
       if (error) throw error;
 
-      // Parse in background
       supabase.functions.invoke("parse-article", {
         body: { article_id: data.id },
       }).catch(console.error);
@@ -411,7 +401,7 @@ const Discover = () => {
             </section>
           )}
 
-          {/* Section 3: Unread / From your reading list */}
+          {/* Section 3: From your reading list */}
           {unreadArticles && unreadArticles.length > 0 && (
             <section>
               <h2 className="font-display text-xl font-semibold text-foreground mb-4">
@@ -461,21 +451,6 @@ function ExternalCard({
   onSave: () => void;
   saving: boolean;
 }) {
-  const [resolving, setResolving] = useState(false);
-
-  const handleOpen = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (isGoogleNewsUrl(item.link)) {
-      setResolving(true);
-      const resolved = await resolveGoogleNewsUrl(item.link);
-      setResolving(false);
-      window.open(resolved, "_blank", "noopener,noreferrer");
-    } else {
-      window.open(item.link, "_blank", "noopener,noreferrer");
-    }
-  };
-
   const formattedDate = (() => {
     try {
       return format(new Date(item.pubDate), "MMM d, yyyy");
@@ -520,6 +495,9 @@ function ExternalCard({
           <div className="flex items-center gap-1.5 text-muted-foreground min-w-0">
             <Link2 className="h-3 w-3 flex-shrink-0" />
             <span className="text-[11px] truncate">{source}</span>
+            {item.meta && (
+              <span className="text-[11px] flex-shrink-0">· {item.meta}</span>
+            )}
             {formattedDate && (
               <span className="text-[11px] flex-shrink-0">· {formattedDate}</span>
             )}
@@ -541,13 +519,14 @@ function ExternalCard({
             <BookmarkPlus className="h-3 w-3" />
             {saving ? "Saving…" : "Save"}
           </Button>
-          <button
-            onClick={handleOpen}
-            disabled={resolving}
+          <a
+            href={item.link}
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-xs text-accent hover:underline flex items-center gap-1"
           >
-            {resolving ? "Opening…" : "Open"} <ExternalLink className="h-3 w-3" />
-          </button>
+            Open <ExternalLink className="h-3 w-3" />
+          </a>
         </div>
       </div>
     </div>
