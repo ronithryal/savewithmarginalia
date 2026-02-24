@@ -9,6 +9,7 @@ import TagSuggestions from "@/components/TagSuggestions";
 import ArticleCard from "@/components/ArticleCard";
 import AddQuoteForm from "@/components/AddQuoteForm";
 import QuotesList from "@/components/QuotesList";
+import ImageUpload from "@/components/ImageUpload";
 
 const ArticleDetail = () => {
   const { user } = useAuth();
@@ -82,6 +83,13 @@ const ArticleDetail = () => {
     queryClient.invalidateQueries({ queryKey: ["articles"] });
   }, [queryClient]);
 
+  const handleArticleImageChange = useCallback(async (url: string | null) => {
+    if (!id) return;
+    await supabase.from("articles").update({ preview_image_url: url }).eq("id", id);
+    queryClient.invalidateQueries({ queryKey: ["article", id] });
+    queryClient.invalidateQueries({ queryKey: ["articles"] });
+  }, [id, queryClient]);
+
   if (!article) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-16">
@@ -97,6 +105,18 @@ const ArticleDetail = () => {
       </Link>
 
       <ArticleCard article={article} fullWidth onTitleEdit={handleTitleEdit} />
+
+      {user && (
+        <div className="mt-4">
+          <p className="text-xs text-muted-foreground mb-1.5">Cover image</p>
+          <ImageUpload
+            currentUrl={article.preview_image_url}
+            onImageChange={handleArticleImageChange}
+            userId={user.id}
+            folder="articles"
+          />
+        </div>
+      )}
 
       <div className="mt-6 mb-6">
         <TagInput

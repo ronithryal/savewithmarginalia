@@ -4,6 +4,8 @@ interface Quote {
   id: string;
   text: string;
   created_at: string;
+  is_image?: boolean;
+  image_url?: string | null;
 }
 
 interface QuotesListProps {
@@ -23,7 +25,17 @@ const QuotesList = ({ quotes }: QuotesListProps) => {
       <div className="space-y-4">
         {quotes?.map((quote) => (
           <blockquote key={quote.id} className="border-l-2 border-accent pl-4 py-2">
-            <p className="text-foreground text-sm leading-relaxed line-clamp-6">{quote.text}</p>
+            {quote.image_url && (
+              <img
+                src={quote.image_url}
+                alt=""
+                className="rounded-md max-h-[200px] object-cover mb-2"
+                loading="lazy"
+              />
+            )}
+            {quote.text && (
+              <p className="text-foreground text-sm leading-relaxed line-clamp-6">{quote.text}</p>
+            )}
             <span className="text-xs text-muted-foreground mt-1.5 block">
               {formatDistanceToNow(new Date(quote.created_at), { addSuffix: true })}
             </span>
