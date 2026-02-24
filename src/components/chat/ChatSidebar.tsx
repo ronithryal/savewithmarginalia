@@ -46,7 +46,7 @@ function SessionRow({
 
   return (
     <div
-      className={`group flex items-center gap-2 px-4 py-2.5 cursor-pointer transition-colors ${
+      className={`group relative flex items-center gap-1 px-3 py-2.5 cursor-pointer transition-colors ${
         isActive ? "bg-secondary" : "hover:bg-secondary/50"
       }`}
       onClick={onSelect}
@@ -65,7 +65,7 @@ function SessionRow({
         </p>
       </div>
       {confirmDelete ? (
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -91,13 +91,13 @@ function SessionRow({
           </Button>
         </div>
       ) : (
-        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className={`h-6 w-6 ${session.is_bookmarked ? "text-accent opacity-100" : "text-muted-foreground hover:text-accent"}`}
+                className={`h-6 w-6 ${session.is_bookmarked ? "text-accent" : "text-muted-foreground hover:text-accent"}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onBookmark();
@@ -155,7 +155,7 @@ export function ChatSidebar({
         </Button>
       </div>
 
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {sessions.length === 0 ? (
           <p className="text-sm text-muted-foreground px-4 py-6 text-center">
             No past conversations yet.
@@ -200,7 +200,7 @@ export function ChatSidebar({
             )}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }
