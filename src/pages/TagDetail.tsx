@@ -114,6 +114,16 @@ const TagDetail = () => {
     queryClient.invalidateQueries({ queryKey: ["tag-articles", tag?.id] });
   };
 
+  const handleDeleteQuote = async (id: string) => {
+    await supabase.from("quotes").delete().eq("id", id);
+    queryClient.invalidateQueries({ queryKey: ["tag-quotes", tag?.id] });
+  };
+
+  const handleQuoteTextEdit = async (id: string, newText: string) => {
+    await supabase.from("quotes").update({ text: newText }).eq("id", id);
+    queryClient.invalidateQueries({ queryKey: ["tag-quotes", tag?.id] });
+  };
+
   const pills: { label: string; value: Filter }[] = [
     { label: "All", value: "all" },
     { label: "Articles", value: "articles" },
@@ -180,6 +190,8 @@ const TagDetail = () => {
               quote={quote}
               article={article}
               fullWidth
+              onDelete={handleDeleteQuote}
+              onTextEdit={handleQuoteTextEdit}
             />
           );
         })}
