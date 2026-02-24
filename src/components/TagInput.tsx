@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
+import { Link } from "react-router-dom";
 
 interface TagInputProps {
   attachedTagIds: string[];
@@ -71,9 +72,15 @@ const TagInput = ({ attachedTagIds, onAttach, onDetach }: TagInputProps) => {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {attachedTags.map((tag) => (
-        <Badge key={tag.id} variant="secondary" className="gap-1 text-xs">
-          {tag.name}
-          <button onClick={() => onDetach(tag.id)} className="hover:text-destructive">
+        <Badge key={tag.id} variant="secondary" className="gap-1 text-xs hover:bg-secondary/80 transition-colors">
+          <Link
+            to={`/tags/${encodeURIComponent(tag.name)}`}
+            onClick={(e) => e.stopPropagation()}
+            className="hover:underline"
+          >
+            {tag.name}
+          </Link>
+          <button onClick={(e) => { e.stopPropagation(); onDetach(tag.id); }} className="hover:text-destructive">
             <X className="h-3 w-3" />
           </button>
         </Badge>

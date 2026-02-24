@@ -11,6 +11,7 @@ import Articles from "./pages/Articles";
 import ArticleDetail from "./pages/ArticleDetail";
 import Quotes from "./pages/Quotes";
 import Tags from "./pages/Tags";
+import TagDetail from "./pages/TagDetail";
 import Settings from "./pages/Settings";
 import Chat from "./pages/Chat";
 import Discover from "./pages/Discover";
@@ -42,6 +43,7 @@ const AppRoutes = () => {
         <Route path="/articles/:id" element={<ArticleDetail />} />
         <Route path="/quotes" element={<Quotes />} />
         <Route path="/tags" element={<Tags />} />
+        <Route path="/tags/:slug" element={<TagDetail />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/discover" element={<Discover />} />
