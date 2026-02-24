@@ -243,7 +243,7 @@ const Chat = () => {
     }
   }, [chatEnabled, user, location.state, send]);
 
-
+  const handleNewChat = () => {
     setActiveSessionId(null);
     setMessages([]);
     if (isMobile) setSidebarOpen(false);
