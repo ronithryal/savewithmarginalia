@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 import { ExternalLink, Link2, Trash2, Pencil } from "lucide-react";
-
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 interface ArticleCardProps {
   article: {
     id: string;
@@ -59,6 +60,28 @@ const DeleteButton = ({ onDelete, id }: { onDelete: (id: string) => void; id: st
     <Trash2 className="h-3.5 w-3.5" />
   </button>
 );
+
+const AiExplainButton = ({ url }: { url: string }) => {
+  const navigate = useNavigate();
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            navigate("/chat", { state: { initialMessage: `Explain this: ${url}` } });
+          }}
+          className="absolute top-2 right-10 bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-accent transition-colors p-1.5 rounded-md opacity-0 group-hover:opacity-100 text-[10px] font-bold leading-none"
+          aria-label="Explain this article with AI"
+        >
+          AI
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="text-xs">Explain this</TooltipContent>
+    </Tooltip>
+  );
+};
 
 function EditableTitle({
   title,
@@ -206,6 +229,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
           </a>
         </div>
 
+        <AiExplainButton url={article.url} />
         {onDelete && <DeleteButton onDelete={onDelete} id={article.id} />}
       </div>
     );
@@ -246,6 +270,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
           </a>
         </div>
 
+        <AiExplainButton url={article.url} />
         {onDelete && <DeleteButton onDelete={onDelete} id={article.id} />}
       </div>
     );
@@ -302,6 +327,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
         </div>
       </div>
 
+      <AiExplainButton url={article.url} />
       {onDelete && <DeleteButton onDelete={onDelete} id={article.id} />}
     </div>
   );

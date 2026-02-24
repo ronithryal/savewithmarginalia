@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -23,6 +23,7 @@ export interface ChatSession {
 
 const Chat = () => {
   const { user } = useAuth();
+  const location = useLocation();
   const isMobile = useIsMobile();
   const [chatEnabled, setChatEnabled] = useState<boolean | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -31,6 +32,7 @@ const Chat = () => {
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [starters, setStarters] = useState<string[]>([]);
+  const initialMessageHandled = useRef(false);
 
   // Check chat enabled
   useEffect(() => {
@@ -230,7 +232,18 @@ const Chat = () => {
     [activeSessionId, messages, loading, user, createSession, loadSessions]
   );
 
-  const handleNewChat = () => {
+  // Handle initial message from navigation state (e.g. "Explain this" from article card)
+  useEffect(() => {
+    const state = location.state as { initialMessage?: string } | null;
+    if (state?.initialMessage && !initialMessageHandled.current && chatEnabled === true && user) {
+      initialMessageHandled.current = true;
+      // Clear navigation state to prevent re-send on refresh
+      window.history.replaceState({}, document.title);
+      send(state.initialMessage);
+    }
+  }, [chatEnabled, user, location.state, send]);
+
+
     setActiveSessionId(null);
     setMessages([]);
     if (isMobile) setSidebarOpen(false);
