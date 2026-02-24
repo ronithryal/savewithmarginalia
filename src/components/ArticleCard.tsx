@@ -148,19 +148,16 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
     return (
       <div className={`group relative bg-[hsl(var(--article-card))] border border-[hsl(var(--article-card-border))] rounded-lg overflow-hidden ${fullWidth ? "max-w-[680px] mx-auto" : ""}`}>
         <div className="flex items-start justify-between p-4 pb-0">
-          <div className="min-w-0">
-            {name && (
-              <EditableTitle
-                title={name}
-                articleId={article.id}
-                onTitleEdit={onTitleEdit ? (id) => {
-                  // For Twitter, reconstruct full title with handle
-                  const newFull = handle ? `${name} (${handle})` : name;
-                  // We pass the raw edited name; the parent commit handles it
-                } : undefined}
-                className="font-display text-sm font-bold text-foreground leading-tight truncate"
-              />
-            )}
+          <div className="min-w-0 flex-1">
+            <EditableTitle
+              title={name}
+              articleId={article.id}
+              onTitleEdit={onTitleEdit ? (id, newName) => {
+                const newFull = handle ? `${newName} (${handle})` : newName;
+                onTitleEdit(id, newFull);
+              } : undefined}
+              className="font-display text-sm font-bold text-foreground leading-tight"
+            />
             {handle && (
               <p className="text-xs text-muted-foreground leading-tight mt-0.5">{handle}</p>
             )}
