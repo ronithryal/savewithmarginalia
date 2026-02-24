@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -14,8 +14,17 @@ const Index = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [url, setUrl] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [url, setUrl] = useState(searchParams.get("url") || "");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const prefill = searchParams.get("url");
+    if (prefill) {
+      setUrl(prefill);
+      setSearchParams({}, { replace: true });
+    }
+  }, []);
 
   const { data: recentQuotes } = useQuery({
     queryKey: ["recent-quotes"],
