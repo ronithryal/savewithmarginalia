@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import FavoriteCreators from "@/components/FavoriteCreators";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -98,6 +99,9 @@ const Settings = () => {
           )}
         </div>
       </section>
+
+      {/* Favorite Creators */}
+      <FavoriteCreators />
 
       {/* Save from anywhere */}
       <section className="mb-12">

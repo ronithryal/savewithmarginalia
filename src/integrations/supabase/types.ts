@@ -181,6 +181,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_feeds: {
+        Row: {
+          created_at: string
+          feed_url: string
+          id: string
+          label: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          feed_url: string
+          id?: string
+          label?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          feed_url?: string
+          id?: string
+          label?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_preferences: {
         Row: {
           ai_chat_enabled: boolean

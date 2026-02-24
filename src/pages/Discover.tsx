@@ -3,15 +3,49 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { RefreshCw, ExternalLink } from "lucide-react";
+import { RefreshCw, ExternalLink, BookmarkPlus, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import ArticleCard from "@/components/ArticleCard";
+import { format } from "date-fns";
+import { toast } from "sonner";
+
+interface ExternalItem {
+  title: string;
+  link: string;
+  pubDate: string;
+  thumbnail?: string;
+  source?: string;
+  matchedTag?: string;
+  creatorLabel?: string;
+}
+
+const RSS2JSON_BASE = "https://api.rss2json.com/v1/api.json?rss_url=";
+
+async function fetchRssFeed(rssUrl: string): Promise<ExternalItem[]> {
+  try {
+    const res = await fetch(`${RSS2JSON_BASE}${encodeURIComponent(rssUrl)}`);
+    if (!res.ok) return [];
+    const json = await res.json();
+    if (json.status !== "ok" || !json.items) return [];
+    return json.items.map((item: any) => ({
+      title: item.title || "",
+      link: item.link || "",
+      pubDate: item.pubDate || "",
+      thumbnail: item.thumbnail || item.enclosure?.link || "",
+      source: json.feed?.title || "",
+    }));
+  } catch {
+    return [];
+  }
+}
 
 const Discover = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [savingUrl, setSavingUrl] = useState<string | null>(null);
 
   // Count total saved items
   const { data: totalItems } = useQuery({
@@ -57,49 +91,87 @@ const Discover = () => {
     enabled: !!user,
   });
 
-  // Articles matching top tags, ranked by recency
-  const { data: tagArticles, isLoading: loadingTagArticles } = useQuery({
-    queryKey: ["discover-tag-articles", topTags, refreshKey],
+  // Get all saved article URLs to exclude
+  const { data: savedUrls } = useQuery({
+    queryKey: ["discover-saved-urls", refreshKey],
     queryFn: async () => {
-      if (!topTags || topTags.length === 0) return [];
-
-      const tagIds = topTags.map((t) => t.id);
-      const { data: articleTagRows } = await supabase
-        .from("article_tags")
-        .select("article_id")
-        .in("tag_id", tagIds);
-
-      if (!articleTagRows || articleTagRows.length === 0) return [];
-
-      const articleIds = [...new Set(articleTagRows.map((r) => r.article_id))];
-
-      const { data: articles } = await supabase
-        .from("articles")
-        .select("*")
-        .in("id", articleIds)
-        .order("created_at", { ascending: false })
-        .limit(4);
-
-      // Fetch tags for each article
-      if (!articles || articles.length === 0) return [];
-
-      const { data: allArticleTags } = await supabase
-        .from("article_tags")
-        .select("article_id, tag_id")
-        .in("article_id", articles.map((a) => a.id));
-
-      const { data: allTags } = await supabase.from("tags").select("id, name");
-      const tagMap = Object.fromEntries((allTags ?? []).map((t) => [t.id, t.name]));
-
-      return articles.map((a) => ({
-        ...a,
-        tags: (allArticleTags ?? [])
-          .filter((at) => at.article_id === a.id)
-          .map((at) => tagMap[at.tag_id])
-          .filter(Boolean),
-      }));
+      const { data } = await supabase.from("articles").select("url");
+      return new Set((data ?? []).map((a) => a.url));
     },
-    enabled: !!user && !!topTags && topTags.length > 0,
+    enabled: !!user,
+  });
+
+  // Section 1: Trending in your interests (external feeds from top tags)
+  const { data: trendingItems, isLoading: loadingTrending } = useQuery({
+    queryKey: ["discover-trending", topTags, savedUrls, refreshKey],
+    queryFn: async () => {
+      if (!topTags || topTags.length === 0 || !savedUrls) return [];
+
+      const allItems: ExternalItem[] = [];
+      const seenUrls = new Set<string>();
+
+      await Promise.all(
+        topTags.map(async (tag) => {
+          const keyword = encodeURIComponent(tag.name);
+          const rssUrl = `https://news.google.com/rss/search?q=${keyword}&hl=en-US&gl=US&ceid=US:en`;
+          const items = await fetchRssFeed(rssUrl);
+          for (const item of items) {
+            if (!item.link || seenUrls.has(item.link) || savedUrls.has(item.link)) continue;
+            seenUrls.add(item.link);
+            allItems.push({ ...item, matchedTag: tag.name });
+          }
+        })
+      );
+
+      // Sort by pubDate descending, take 6
+      return allItems
+        .sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
+        .slice(0, 6);
+    },
+    enabled: !!user && !!topTags && topTags.length > 0 && !!savedUrls,
+  });
+
+  // Get user feeds
+  const { data: userFeeds } = useQuery({
+    queryKey: ["user-feeds"],
+    queryFn: async () => {
+      const { data } = await (supabase as any)
+        .from("user_feeds")
+        .select("*")
+        .eq("user_id", user!.id);
+      return data ?? [];
+    },
+    enabled: !!user,
+  });
+
+  // Section 2: From your favorite creators
+  const { data: creatorItems, isLoading: loadingCreators } = useQuery({
+    queryKey: ["discover-creators", userFeeds, savedUrls, refreshKey],
+    queryFn: async () => {
+      if (!userFeeds || userFeeds.length === 0 || !savedUrls) return [];
+
+      const allItems: ExternalItem[] = [];
+      const seenUrls = new Set<string>();
+
+      await Promise.all(
+        userFeeds.map(async (feed: any) => {
+          const items = await fetchRssFeed(feed.feed_url);
+          let count = 0;
+          for (const item of items) {
+            if (count >= 3) break;
+            if (!item.link || seenUrls.has(item.link) || savedUrls.has(item.link)) continue;
+            seenUrls.add(item.link);
+            allItems.push({ ...item, creatorLabel: feed.label });
+            count++;
+          }
+        })
+      );
+
+      return allItems
+        .sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
+        .slice(0, 8);
+    },
+    enabled: !!user && !!userFeeds && userFeeds.length > 0 && !!savedUrls,
   });
 
   // Unread articles (last_opened_at is null)
@@ -120,8 +192,56 @@ const Discover = () => {
   const handleRefresh = () => {
     setRefreshKey((k) => k + 1);
     queryClient.invalidateQueries({ queryKey: ["discover-top-tags"] });
-    queryClient.invalidateQueries({ queryKey: ["discover-tag-articles"] });
+    queryClient.invalidateQueries({ queryKey: ["discover-saved-urls"] });
+    queryClient.invalidateQueries({ queryKey: ["discover-trending"] });
+    queryClient.invalidateQueries({ queryKey: ["discover-creators"] });
     queryClient.invalidateQueries({ queryKey: ["discover-unread"] });
+  };
+
+  const handleSaveExternal = async (item: ExternalItem) => {
+    if (!user || savingUrl) return;
+    setSavingUrl(item.link);
+    try {
+      const domain = (() => {
+        try { return new URL(item.link).hostname.replace("www.", ""); }
+        catch { return ""; }
+      })();
+
+      const { data: existing } = await supabase
+        .from("articles")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("url", item.link)
+        .maybeSingle();
+
+      if (existing) {
+        toast.info("Already in your library.");
+        setSavingUrl(null);
+        return;
+      }
+
+      const { data, error } = await supabase.from("articles").insert({
+        user_id: user.id,
+        url: item.link,
+        title: item.title || "Untitled article",
+        source_domain: domain,
+        preview_image_url: item.thumbnail || null,
+        content_text: "",
+      }).select().single();
+
+      if (error) throw error;
+
+      // Parse in background
+      supabase.functions.invoke("parse-article", {
+        body: { article_id: data.id },
+      }).catch(console.error);
+
+      toast.success("Saved to library!");
+      queryClient.invalidateQueries({ queryKey: ["discover-saved-urls"] });
+    } catch {
+      toast.error("Failed to save.");
+    }
+    setSavingUrl(null);
   };
 
   const tooFewItems = totalItems !== undefined && totalItems < 3;
@@ -156,38 +276,81 @@ const Discover = () => {
         </div>
       ) : (
         <>
-          {/* Section 1: Based on your tags */}
-          {tagArticles && tagArticles.length > 0 && (
-            <section className="mb-12">
-              <h2 className="font-display text-xl font-semibold text-foreground mb-4">
-                Based on your tags
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {tagArticles.map((article) => (
-                  <Link key={article.id} to={`/articles/${article.id}`} className="block">
-                    <div className="relative">
-                      <ArticleCard article={article} />
-                      {article.tags && article.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 px-4 pb-3">
-                          {article.tags.slice(0, 3).map((tag) => (
-                            <Badge
-                              key={tag}
-                              variant="secondary"
-                              className="text-[11px] font-medium"
-                            >
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
+          {/* Section 1: Trending in your interests */}
+          <section className="mb-12">
+            <h2 className="font-display text-xl font-semibold text-foreground mb-4">
+              Trending in your interests
+            </h2>
+            {loadingTrending ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="rounded-lg border border-border overflow-hidden">
+                    <Skeleton className="w-full h-32" />
+                    <div className="p-4 space-y-2">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
                     </div>
-                  </Link>
+                  </div>
                 ))}
               </div>
+            ) : trendingItems && trendingItems.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {trendingItems.map((item) => (
+                  <ExternalCard
+                    key={item.link}
+                    item={item}
+                    badge={item.matchedTag}
+                    onSave={() => handleSaveExternal(item)}
+                    saving={savingUrl === item.link}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm py-6">
+                Nothing new right now — check back later.
+              </p>
+            )}
+          </section>
+
+          {/* Section 2: From your favorite creators */}
+          {userFeeds && userFeeds.length > 0 && (
+            <section className="mb-12">
+              <h2 className="font-display text-xl font-semibold text-foreground mb-4">
+                From your favorite creators
+              </h2>
+              {loadingCreators ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="rounded-lg border border-border overflow-hidden">
+                      <Skeleton className="w-full h-32" />
+                      <div className="p-4 space-y-2">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="h-3 w-1/2" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : creatorItems && creatorItems.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {creatorItems.map((item) => (
+                    <ExternalCard
+                      key={item.link}
+                      item={item}
+                      badge={item.creatorLabel}
+                      onSave={() => handleSaveExternal(item)}
+                      saving={savingUrl === item.link}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-sm py-6">
+                  Nothing new right now — check back later.
+                </p>
+              )}
             </section>
           )}
 
-          {/* Section 2: Unread / From your reading list */}
+          {/* Section 3: Unread / From your reading list */}
           {unreadArticles && unreadArticles.length > 0 && (
             <section>
               <h2 className="font-display text-xl font-semibold text-foreground mb-4">
@@ -211,9 +374,10 @@ const Discover = () => {
             </section>
           )}
 
-          {(!tagArticles || tagArticles.length === 0) &&
+          {(!trendingItems || trendingItems.length === 0) &&
+            (!userFeeds || userFeeds.length === 0) &&
             (!unreadArticles || unreadArticles.length === 0) &&
-            !loadingTagArticles &&
+            !loadingTrending &&
             !loadingUnread && (
               <p className="text-muted-foreground text-sm text-center py-12">
                 No recommendations yet. Try tagging some articles to get personalized suggestions.
@@ -224,5 +388,96 @@ const Discover = () => {
     </div>
   );
 };
+
+function ExternalCard({
+  item,
+  badge,
+  onSave,
+  saving,
+}: {
+  item: ExternalItem;
+  badge?: string;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  const formattedDate = (() => {
+    try {
+      return format(new Date(item.pubDate), "MMM d, yyyy");
+    } catch {
+      return "";
+    }
+  })();
+
+  const source = item.source || (() => {
+    try { return new URL(item.link).hostname.replace("www.", ""); }
+    catch { return ""; }
+  })();
+
+  return (
+    <div className="group bg-[hsl(var(--article-card))] border border-[hsl(var(--article-card-border))] rounded-lg overflow-hidden flex flex-col">
+      {item.thumbnail && (
+        <div className="w-full h-32 overflow-hidden bg-muted">
+          <img
+            src={item.thumbnail}
+            alt=""
+            className="w-full h-full object-cover"
+            loading="lazy"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = "none";
+            }}
+          />
+        </div>
+      )}
+
+      <div className="p-4 flex-1 flex flex-col">
+        {badge && (
+          <Badge variant="secondary" className="text-[10px] font-medium w-fit mb-2">
+            {badge}
+          </Badge>
+        )}
+
+        <h3 className="font-display text-sm font-bold text-foreground leading-snug line-clamp-2 mb-2">
+          {item.title || "Untitled"}
+        </h3>
+
+        <div className="mt-auto flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-muted-foreground min-w-0">
+            <Link2 className="h-3 w-3 flex-shrink-0" />
+            <span className="text-[11px] truncate">{source}</span>
+            {formattedDate && (
+              <span className="text-[11px] flex-shrink-0">· {formattedDate}</span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 mt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs gap-1.5 h-7"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onSave();
+            }}
+            disabled={saving}
+          >
+            <BookmarkPlus className="h-3 w-3" />
+            {saving ? "Saving…" : "Save"}
+          </Button>
+          <a
+            href={item.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-accent hover:underline flex items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Open <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default Discover;
