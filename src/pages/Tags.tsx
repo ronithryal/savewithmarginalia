@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { Hash, Trash2 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const Tags = () => {
   const { user } = useAuth();
@@ -106,13 +107,13 @@ const Tags = () => {
           const qc = quoteTagCounts?.[tag.id] || 0;
           return (
             <div key={tag.id} className="flex items-center justify-between py-3 group">
-              <div className="flex items-center gap-2">
+              <Link to={`/tags/${encodeURIComponent(tag.name)}`} className="flex items-center gap-2 hover:underline">
                 <Hash className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-sm font-medium text-foreground">{tag.name}</span>
                 <span className="text-xs text-muted-foreground">
                   — {ac} {ac === 1 ? "article" : "articles"} · {qc} {qc === 1 ? "quote" : "quotes"}
                 </span>
-              </div>
+              </Link>
               <button
                 onClick={() => handleDeleteTag(tag.id)}
                 className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
