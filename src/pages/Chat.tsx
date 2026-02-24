@@ -133,17 +133,24 @@ const Chat = () => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+
   const send = useCallback(async (text: string) => {
-    if (!text.trim() || loading) return;
-    const userMsg: ChatMessage = { role: "user", content: text.trim() };
-    const history = messages.map((m) => ({ role: m.role, content: m.content }));
+    if (!text.trim() || loadingRef.current) return;
+    const trimmed = text.trim();
+    const userMsg: ChatMessage = { role: "user", content: trimmed };
+    const history = messagesRef.current.map((m) => ({ role: m.role, content: m.content }));
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
 
     try {
       const { data, error } = await supabase.functions.invoke("chat", {
-        body: { message: text.trim(), history },
+        body: { message: trimmed, history },
       });
 
       if (error) throw error;
@@ -167,7 +174,7 @@ const Chat = () => {
     } finally {
       setLoading(false);
     }
-  }, [messages, loading]);
+  }, []);
 
   const clearConversation = () => {
     setMessages([]);

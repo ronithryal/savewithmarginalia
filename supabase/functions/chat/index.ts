@@ -26,6 +26,8 @@ NOT: "Source: Half the AI Agent Market Is One Category (Garry's List)"
 
 End every response with a single italicized follow-up question.
 
+The user's message is the ONLY question you answer. Do not answer a different question than what was asked, even if the context suggests another angle would be more interesting. If the user asks what to read next, recommend reading. If the user asks about tensions, discuss tensions. Stay strictly on-topic with the exact question asked.
+
 After your main response, on a new line, output exactly this JSON block (and nothing else after it):
 {"followups":["<suggestion 1>","<suggestion 2>"]}
 The two suggestions should be short (under 8 words each), provocative follow-up directions the user might want to explore next. Do NOT include this JSON explanation in your prose.`;
