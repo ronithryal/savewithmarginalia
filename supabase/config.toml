@@ -1,1 +1,4 @@
 project_id = "nmqboghxoonlzadeqedt"
+
+[functions.bookmarklet-save]
+verify_jwt = false

@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { BookOpen, FileText, Hash, Search, LogOut } from "lucide-react";
+import { BookOpen, FileText, Hash, Search, LogOut, Settings } from "lucide-react";
 
 const TopNav = () => {
   const { user, signOut } = useAuth();
@@ -14,7 +14,7 @@ const TopNav = () => {
     { to: "/articles", label: "Articles", icon: FileText },
     { to: "/quotes", label: "Quotes", icon: BookOpen },
     { to: "/tags", label: "Tags", icon: Hash },
-    // TODO: Add search page with AI embeddings at /search
+    { to: "/settings", label: "Settings", icon: Settings },
   ];
 
   return (
