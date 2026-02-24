@@ -97,7 +97,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
           {description ? (
             <p className="text-sm text-foreground leading-relaxed">{description}</p>
           ) : (
-            <p className="text-sm text-muted-foreground italic">Tweet content unavailable.</p>
+            <p className="text-[13px] text-muted-foreground italic">This tweet may be unavailable, protected, or deleted.</p>
           )}
         </div>
 
