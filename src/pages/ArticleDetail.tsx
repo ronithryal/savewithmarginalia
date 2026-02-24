@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import TagInput from "@/components/TagInput";
+import TagSuggestions from "@/components/TagSuggestions";
 import ArticleCard from "@/components/ArticleCard";
 import AddQuoteForm from "@/components/AddQuoteForm";
 import QuotesList from "@/components/QuotesList";
@@ -87,6 +88,11 @@ const ArticleDetail = () => {
           attachedTagIds={articleTagIds ?? []}
           onAttach={handleAttachArticleTag}
           onDetach={handleDetachArticleTag}
+        />
+        <TagSuggestions
+          text={[article.title, article.content_text].filter(Boolean).join(" — ")}
+          onAttachTag={handleAttachArticleTag}
+          attachedTagIds={articleTagIds ?? []}
         />
       </div>
 

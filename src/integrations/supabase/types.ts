@@ -178,6 +178,27 @@ export type Database = {
         }
         Relationships: []
       }
+      user_preferences: {
+        Row: {
+          ai_tags_enabled: boolean
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          ai_tags_enabled?: boolean
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          ai_tags_enabled?: boolean
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

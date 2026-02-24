@@ -2,3 +2,6 @@ project_id = "nmqboghxoonlzadeqedt"
 
 [functions.bookmarklet-save]
 verify_jwt = false
+
+[functions.suggest-tags]
+verify_jwt = false
