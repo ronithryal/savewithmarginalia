@@ -192,22 +192,68 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ─── Twitter/X: use oEmbed API only (no image fetch) ───
+    // ─── Twitter/X: use oEmbed API + AI title ───
     if (isTwitterUrl(articleUrl)) {
       const oembed = await fetchTwitterOEmbed(articleUrl);
+
+      // Generate an AI title from the tweet text
+      let aiTitle: string | null = null;
+      if (oembed.description) {
+        try {
+          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+          if (LOVABLE_API_KEY) {
+            const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "google/gemini-2.5-flash-lite",
+                messages: [
+                  {
+                    role: "system",
+                    content: "You generate short, descriptive titles for tweets. Return ONLY the title text, nothing else. The title should summarize the tweet's topic in 4-10 words. Do not use quotes around the title.",
+                  },
+                  {
+                    role: "user",
+                    content: oembed.description,
+                  },
+                ],
+              }),
+            });
+            if (aiResp.ok) {
+              const aiData = await aiResp.json();
+              const generated = aiData.choices?.[0]?.message?.content?.trim();
+              if (generated && generated.length > 0 && generated.length < 120) {
+                aiTitle = generated;
+              }
+            }
+          }
+        } catch (err) {
+          console.error("AI title generation failed:", err);
+        }
+      }
+
+      // Build title: "AI Title (handle)" or fall back to "AuthorName (handle)"
+      const handleMatch = oembed.title?.match(/\((@[^)]+)\)$/);
+      const handle = handleMatch ? handleMatch[1] : null;
+      const finalTitle = aiTitle
+        ? (handle ? `${aiTitle} (${handle})` : aiTitle)
+        : oembed.title;
 
       const updates: Record<string, unknown> = {
         source_domain: "x.com",
         preview_image_url: null,
       };
-      if (oembed.title) updates.title = oembed.title;
+      if (finalTitle) updates.title = finalTitle;
       if (oembed.description) updates.content_text = oembed.description;
 
       await client.from("articles").update(updates).eq("id", article_id);
 
       return new Response(JSON.stringify({
         success: true,
-        title: oembed.title,
+        title: finalTitle,
         description: oembed.description,
         image: null,
         source: "x.com",
