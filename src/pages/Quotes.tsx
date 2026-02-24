@@ -1,9 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { formatDistanceToNow } from "date-fns";
-import { ArrowRight } from "lucide-react";
+import QuoteCard from "@/components/QuoteCard";
 
 const Quotes = () => {
   const { user } = useAuth();
@@ -35,26 +33,15 @@ const Quotes = () => {
         </p>
       )}
 
-      <div className="space-y-6">
+      <div className="space-y-5">
         {quotes?.map((quote) => {
           const article = (quote as any).articles;
           return (
-            <blockquote key={quote.id} className="border-l-2 border-accent pl-4 py-1">
-              <p className="text-foreground text-sm leading-relaxed">
-                {quote.text.length > 200 ? quote.text.slice(0, 200) + "…" : quote.text}
-              </p>
-              <div className="flex items-center gap-2 mt-1.5">
-                <span className="text-xs text-muted-foreground">
-                  {article?.title || "Unknown"} · {formatDistanceToNow(new Date(quote.created_at), { addSuffix: true })}
-                </span>
-                <Link
-                  to={`/articles/${article?.id}`}
-                  className="text-xs text-accent hover:underline inline-flex items-center gap-0.5"
-                >
-                  View in article <ArrowRight className="h-3 w-3" />
-                </Link>
-              </div>
-            </blockquote>
+            <QuoteCard
+              key={quote.id}
+              quote={quote}
+              article={article}
+            />
           );
         })}
       </div>

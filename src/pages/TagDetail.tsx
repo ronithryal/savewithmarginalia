@@ -4,8 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import ArticleCard from "@/components/ArticleCard";
+import QuoteCard from "@/components/QuoteCard";
 
 type Filter = "all" | "articles" | "quotes";
 
@@ -175,25 +175,12 @@ const TagDetail = () => {
           const quote = item.data;
           const article = (quote as any).articles;
           return (
-            <blockquote key={`q-${quote.id}`} className="border-l-2 border-accent pl-4 py-1">
-              <p className="text-foreground text-sm leading-relaxed">
-                {quote.text.length > 200 ? quote.text.slice(0, 200) + "…" : quote.text}
-              </p>
-              <div className="flex items-center gap-2 mt-1.5">
-                <span className="text-xs text-muted-foreground">
-                  {article?.title || "Unknown"} ·{" "}
-                  {formatDistanceToNow(new Date(quote.created_at), { addSuffix: true })}
-                </span>
-                {article?.id && (
-                  <Link
-                    to={`/articles/${article.id}`}
-                    className="text-xs text-accent hover:underline"
-                  >
-                    View in article →
-                  </Link>
-                )}
-              </div>
-            </blockquote>
+            <QuoteCard
+              key={`q-${quote.id}`}
+              quote={quote}
+              article={article}
+              fullWidth
+            />
           );
         })}
       </div>
