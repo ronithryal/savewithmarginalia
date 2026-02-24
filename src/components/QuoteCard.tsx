@@ -25,10 +25,9 @@ const AiExplainButton = ({ text, articleUrl, articleId }: { text: string; articl
   const navigate = useNavigate();
   const stripHeadline = (t: string) => t.replace(/^the headline:\s*/i, "");
   const cleaned = stripHeadline(text);
-  const snippet = cleaned.length > 120 ? cleaned.slice(0, 120) + "…" : cleaned;
   const message = articleUrl
-    ? `Explain this quote: "${snippet}"\n\nSource: ${articleUrl}`
-    : `Explain this quote: "${snippet}"`;
+    ? `Explain this quote: "${cleaned}"\n\nSource: ${articleUrl}`
+    : `Explain this quote: "${cleaned}"`;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
