@@ -33,6 +33,11 @@ const Articles = () => {
     }
   };
 
+  const handleTitleEdit = async (id: string, newTitle: string) => {
+    await supabase.from("articles").update({ title: newTitle }).eq("id", id);
+    queryClient.invalidateQueries({ queryKey: ["articles"] });
+  };
+
   return (
     <div className="mx-auto max-w-5xl px-6 py-16 animate-fade-in">
       <h1 className="font-display text-3xl font-bold tracking-tight text-foreground mb-8">
@@ -50,7 +55,7 @@ const Articles = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {articles?.map((article) => (
           <Link key={article.id} to={`/articles/${article.id}`}>
-            <ArticleCard article={article} onDelete={handleDelete} />
+            <ArticleCard article={article} onDelete={handleDelete} onTitleEdit={handleTitleEdit} />
           </Link>
         ))}
       </div>
