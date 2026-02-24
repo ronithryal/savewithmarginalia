@@ -180,18 +180,21 @@ export type Database = {
       }
       user_preferences: {
         Row: {
+          ai_chat_enabled: boolean
           ai_tags_enabled: boolean
           created_at: string
           id: string
           user_id: string
         }
         Insert: {
+          ai_chat_enabled?: boolean
           ai_tags_enabled?: boolean
           created_at?: string
           id?: string
           user_id: string
         }
         Update: {
+          ai_chat_enabled?: boolean
           ai_tags_enabled?: boolean
           created_at?: string
           id?: string

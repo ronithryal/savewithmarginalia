@@ -13,24 +13,27 @@ const bookmarkletCode = `javascript:(function(){const s=window.getSelection().to
 const Settings = () => {
   const { user } = useAuth();
   const [aiEnabled, setAiEnabled] = useState(true);
+  const [chatEnabled, setChatEnabled] = useState(true);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!user) return;
     supabase
       .from("user_preferences" as any)
-      .select("ai_tags_enabled")
+      .select("ai_tags_enabled, ai_chat_enabled")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }: any) => {
-        if (data) setAiEnabled(data.ai_tags_enabled);
+        if (data) {
+          setAiEnabled(data.ai_tags_enabled);
+          setChatEnabled(data.ai_chat_enabled ?? true);
+        }
         setLoaded(true);
       });
   }, [user]);
 
-  const toggleAi = async (checked: boolean) => {
+  const upsertPreference = async (field: string, value: boolean) => {
     if (!user) return;
-    setAiEnabled(checked);
     const { data: existing } = await (supabase as any)
       .from("user_preferences")
       .select("id")
@@ -40,13 +43,23 @@ const Settings = () => {
     if (existing) {
       await (supabase as any)
         .from("user_preferences")
-        .update({ ai_tags_enabled: checked })
+        .update({ [field]: value })
         .eq("user_id", user.id);
     } else {
       await (supabase as any)
         .from("user_preferences")
-        .insert({ user_id: user.id, ai_tags_enabled: checked });
+        .insert({ user_id: user.id, [field]: value });
     }
+  };
+
+  const toggleAi = async (checked: boolean) => {
+    setAiEnabled(checked);
+    await upsertPreference("ai_tags_enabled", checked);
+  };
+
+  const toggleChat = async (checked: boolean) => {
+    setChatEnabled(checked);
+    await upsertPreference("ai_chat_enabled", checked);
   };
 
   if (!user) return null;
@@ -71,6 +84,17 @@ const Settings = () => {
           </div>
           {loaded && (
             <Switch checked={aiEnabled} onCheckedChange={toggleAi} />
+          )}
+        </div>
+        <div className="flex items-center justify-between rounded-md border border-border p-4 mt-3">
+          <div>
+            <p className="text-sm font-medium text-foreground">Library chat</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Chat with your saved articles and quotes using AI. Your content is used as context for answers.
+            </p>
+          </div>
+          {loaded && (
+            <Switch checked={chatEnabled} onCheckedChange={toggleChat} />
           )}
         </div>
       </section>
