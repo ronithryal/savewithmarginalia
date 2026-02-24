@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -115,8 +117,72 @@ const Settings = () => {
           </ol>
         </div>
       </section>
+
+      {/* Developer tools – only in dev */}
+      {import.meta.env.DEV && (
+        <section className="mb-12">
+          <h2 className="font-display text-xl font-semibold text-foreground mb-6">
+            Developer tools
+          </h2>
+          <div className="flex items-center justify-between rounded-md border border-border p-4">
+            <div>
+              <p className="text-sm font-medium text-foreground">Re-clean tweet text</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Applies the latest cleaning regex to all existing articles with residual t.co / pic.twitter.com links.
+              </p>
+            </div>
+            <RecleanButton userId={user.id} />
+          </div>
+        </section>
+      )}
     </div>
   );
 };
+
+function cleanTweetText(text: string): string {
+  return text
+    .replace(/https?:\/\/t\.co\/\S+/gi, "")
+    .replace(/pic\.twitter\.com\/\S+/gi, "")
+    .replace(/pic\.x\.com\/\S+/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function RecleanButton({ userId }: { userId: string }) {
+  const [running, setRunning] = useState(false);
+
+  const run = async () => {
+    setRunning(true);
+    try {
+      const { data: articles } = await supabase
+        .from("articles")
+        .select("id, content_text")
+        .eq("user_id", userId)
+        .not("content_text", "is", null);
+
+      let updated = 0;
+      for (const a of articles || []) {
+        if (!a.content_text) continue;
+        if (!/t\.co\/|pic\.twitter\.com|pic\.x\.com/i.test(a.content_text)) continue;
+        const cleaned = cleanTweetText(a.content_text);
+        if (cleaned !== a.content_text) {
+          await supabase.from("articles").update({ content_text: cleaned }).eq("id", a.id);
+          updated++;
+        }
+      }
+      toast.success(`Cleaned ${updated} article(s).`);
+    } catch {
+      toast.error("Failed to clean tweets.");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" onClick={run} disabled={running}>
+      {running ? "Cleaning…" : "Run"}
+    </Button>
+  );
+}
 
 export default Settings;
