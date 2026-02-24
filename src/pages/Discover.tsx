@@ -491,17 +491,16 @@ function ExternalCard({
           {item.title || "Untitled"}
         </h3>
 
-        <div className="mt-auto flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-muted-foreground min-w-0">
-            <Link2 className="h-3 w-3 flex-shrink-0" />
-            <span className="text-[11px] truncate">{source}</span>
-            {item.meta && (
-              <span className="text-[11px] flex-shrink-0">· {item.meta}</span>
-            )}
-            {formattedDate && (
-              <span className="text-[11px] flex-shrink-0">· {formattedDate}</span>
-            )}
-          </div>
+        <div className="mt-auto flex items-center gap-1.5 text-muted-foreground min-w-0">
+          {item.meta && (
+            <span className="text-[11px]">{item.meta}</span>
+          )}
+          {item.meta && formattedDate && (
+            <span className="text-[11px]">·</span>
+          )}
+          {formattedDate && (
+            <span className="text-[11px]">{formattedDate}</span>
+          )}
         </div>
 
         <div className="flex items-center gap-2 mt-3">
