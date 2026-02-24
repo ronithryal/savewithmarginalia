@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { BookOpen, FileText, Hash, Search, LogOut, Settings } from "lucide-react";
+import { BookOpen, FileText, Hash, Search, LogOut, Settings, Compass } from "lucide-react";
 
 const TopNav = () => {
   const { user, signOut } = useAuth();
@@ -15,6 +15,7 @@ const TopNav = () => {
     { to: "/quotes", label: "Quotes", icon: BookOpen },
     { to: "/tags", label: "Tags", icon: Hash },
     { to: "/chat", label: "Chat", icon: null },
+    { to: "/discover", label: "Discover", icon: Compass },
     { to: "/settings", label: "Settings", icon: Settings },
   ];
 

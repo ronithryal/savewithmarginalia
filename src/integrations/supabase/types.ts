@@ -52,6 +52,7 @@ export type Database = {
           content_text: string | null
           created_at: string
           id: string
+          last_opened_at: string | null
           preview_image_url: string | null
           source_domain: string
           title: string
@@ -62,6 +63,7 @@ export type Database = {
           content_text?: string | null
           created_at?: string
           id?: string
+          last_opened_at?: string | null
           preview_image_url?: string | null
           source_domain?: string
           title?: string
@@ -72,6 +74,7 @@ export type Database = {
           content_text?: string | null
           created_at?: string
           id?: string
+          last_opened_at?: string | null
           preview_image_url?: string | null
           source_domain?: string
           title?: string

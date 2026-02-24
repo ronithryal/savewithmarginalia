@@ -13,6 +13,7 @@ import Quotes from "./pages/Quotes";
 import Tags from "./pages/Tags";
 import Settings from "./pages/Settings";
 import Chat from "./pages/Chat";
+import Discover from "./pages/Discover";
 import ShareTarget from "./pages/ShareTarget";
 import SearchPage from "./pages/Search";
 import NotFound from "./pages/NotFound";
@@ -43,6 +44,7 @@ const AppRoutes = () => {
         <Route path="/tags" element={<Tags />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/chat" element={<Chat />} />
+        <Route path="/discover" element={<Discover />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/share-target" element={<ShareTarget />} />
         <Route path="*" element={<NotFound />} />
