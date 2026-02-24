@@ -52,6 +52,7 @@ function EditableText({
   quoteId: string;
   onTextEdit?: (id: string, newText: string) => void;
 }) {
+  const stripHeadline = (t: string) => t.replace(/^the headline:\s*/i, "");
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(text);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -79,7 +80,7 @@ function EditableText({
   if (!onTextEdit) {
     return (
       <p className="font-display text-base font-bold text-foreground leading-snug line-clamp-4">
-        "{text}"
+        "{stripHeadline(text)}"
       </p>
     );
   }
@@ -107,7 +108,7 @@ function EditableText({
   return (
     <span className="inline-flex items-start gap-1.5 group/title">
       <p className="font-display text-base font-bold text-foreground leading-snug line-clamp-4">
-        "{text}"
+        "{stripHeadline(text)}"
       </p>
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditing(true); }}
@@ -131,7 +132,11 @@ const QuoteCard = ({ quote, article, fullWidth = false, onDelete, onTextEdit }: 
         <EditableText text={quote.text} quoteId={quote.id} onTextEdit={onTextEdit} />
 
         <div className="flex items-center justify-between mt-3">
-          <div className="min-w-0" />
+          <div className="flex items-center gap-1.5 text-muted-foreground min-w-0">
+            <span className="text-xs truncate">
+              {article?.title || "Unknown source"}
+            </span>
+          </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">{formattedDate}</span>
             {article?.id && (
