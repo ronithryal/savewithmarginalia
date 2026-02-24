@@ -160,7 +160,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
 
         {/* Footer: domain + open link */}
         <div className="flex items-center justify-between px-4 pb-3">
-          <span className="text-xs text-muted-foreground">linkedin.com</span>
+          <span className="text-xs text-muted-foreground">{formattedDate} · linkedin.com</span>
           <a
             href={article.url}
             target="_blank"
