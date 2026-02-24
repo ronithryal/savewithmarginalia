@@ -14,7 +14,7 @@ const Quotes = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("quotes")
-        .select("*, articles(id, title, source_domain)")
+        .select("*, articles(id, title, source_domain, url)")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data;

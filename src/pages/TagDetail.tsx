@@ -79,7 +79,7 @@ const TagDetail = () => {
       if (quoteIdSet.size === 0) return [];
       const { data: qts } = await supabase
         .from("quotes")
-        .select("*, articles(id, title, source_domain)")
+        .select("*, articles(id, title, source_domain, url)")
         .in("id", Array.from(quoteIdSet))
         .order("created_at", { ascending: false });
       return qts ?? [];
