@@ -19,6 +19,7 @@ export interface ChatSession {
   title: string;
   created_at: string;
   updated_at: string;
+  is_bookmarked: boolean;
 }
 
 const Chat = () => {
@@ -125,6 +126,26 @@ const Chat = () => {
     fetchStarters();
   }, [user]);
 
+  // Auto-apply tags from source article to a chat session
+  const applySourceTags = useCallback(
+    async (sessionId: string, sourceArticleId: string) => {
+      // Get tags from the source article
+      const { data: articleTags } = await supabase
+        .from("article_tags")
+        .select("tag_id")
+        .eq("article_id", sourceArticleId);
+      if (!articleTags || articleTags.length === 0) return;
+
+      // Insert tags for the chat session
+      const inserts = articleTags.map((at) => ({
+        session_id: sessionId,
+        tag_id: at.tag_id,
+      }));
+      await supabase.from("chat_session_tags" as any).insert(inserts);
+    },
+    []
+  );
+
   const createSession = useCallback(
     async (firstMessage: string): Promise<string | null> => {
       if (!user) return null;
@@ -149,7 +170,7 @@ const Chat = () => {
   );
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, sourceArticleId?: string) => {
       if (!text.trim() || loading || !user) return;
       const trimmed = text.trim();
       setLoading(true);
@@ -164,6 +185,11 @@ const Chat = () => {
           return;
         }
         setActiveSessionId(sessionId);
+
+        // Auto-apply tags from source article
+        if (sourceArticleId) {
+          applySourceTags(sessionId, sourceArticleId);
+        }
       }
 
       // Insert user message
@@ -229,17 +255,18 @@ const Chat = () => {
         setLoading(false);
       }
     },
-    [activeSessionId, messages, loading, user, createSession, loadSessions]
+    [activeSessionId, messages, loading, user, createSession, loadSessions, applySourceTags]
   );
 
   // Handle initial message from navigation state (e.g. "Explain this" from article card)
   useEffect(() => {
-    const state = location.state as { initialMessage?: string } | null;
+    const state = location.state as { initialMessage?: string; sourceArticleId?: string } | null;
     if (state?.initialMessage && !initialMessageHandled.current && chatEnabled === true && user) {
       initialMessageHandled.current = true;
+      const sourceArticleId = state.sourceArticleId;
       // Clear navigation state to prevent re-send on refresh
       window.history.replaceState({}, document.title);
-      send(state.initialMessage);
+      send(state.initialMessage, sourceArticleId);
     }
   }, [chatEnabled, user, location.state, send]);
 
@@ -260,6 +287,14 @@ const Chat = () => {
       setActiveSessionId(null);
       setMessages([]);
     }
+    loadSessions();
+  };
+
+  const handleBookmarkSession = async (id: string, bookmarked: boolean) => {
+    await supabase
+      .from("chat_sessions" as any)
+      .update({ is_bookmarked: bookmarked })
+      .eq("id", id);
     loadSessions();
   };
 
@@ -304,7 +339,6 @@ const Chat = () => {
       className="flex animate-fade-in"
       style={{ height: "calc(100vh - 3.5rem)" }}
     >
-      {/* Sidebar — desktop always visible, mobile as overlay */}
       {isMobile ? (
         sidebarOpen && (
           <div className="fixed inset-0 z-50 flex">
@@ -319,6 +353,7 @@ const Chat = () => {
                 onNewChat={handleNewChat}
                 onSelectSession={handleSelectSession}
                 onDeleteSession={handleDeleteSession}
+                onBookmarkSession={handleBookmarkSession}
               />
             </div>
           </div>
@@ -331,18 +366,18 @@ const Chat = () => {
             onNewChat={handleNewChat}
             onSelectSession={handleSelectSession}
             onDeleteSession={handleDeleteSession}
+            onBookmarkSession={handleBookmarkSession}
           />
         </div>
       )}
 
-      {/* Main chat panel */}
       <div className="flex-1 min-w-0">
         <ChatPanel
           messages={messages}
           loading={loading}
           starters={starters}
           hasActiveSession={!!activeSessionId}
-          onSend={send}
+          onSend={(text) => send(text)}
           onClearMessages={handleClearMessages}
           onOpenSidebar={isMobile ? () => setSidebarOpen(true) : undefined}
         />

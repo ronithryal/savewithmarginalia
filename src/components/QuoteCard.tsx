@@ -21,7 +21,7 @@ interface QuoteCardProps {
   onTextEdit?: (id: string, newText: string) => void;
 }
 
-const AiExplainButton = ({ text, articleUrl }: { text: string; articleUrl?: string }) => {
+const AiExplainButton = ({ text, articleUrl, articleId }: { text: string; articleUrl?: string; articleId?: string }) => {
   const navigate = useNavigate();
   const stripHeadline = (t: string) => t.replace(/^the headline:\s*/i, "");
   const cleaned = stripHeadline(text);
@@ -36,7 +36,7 @@ const AiExplainButton = ({ text, articleUrl }: { text: string; articleUrl?: stri
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            navigate("/chat", { state: { initialMessage: message } });
+            navigate("/chat", { state: { initialMessage: message, sourceArticleId: articleId } });
           }}
           className="absolute top-2 right-10 bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-accent transition-colors p-1.5 rounded-md opacity-0 group-hover:opacity-100 text-[10px] font-bold leading-none"
           aria-label="Explain this quote with AI"
@@ -158,7 +158,7 @@ const QuoteCard = ({ quote, article, fullWidth = false, onDelete, onTextEdit }: 
         </div>
       </div>
 
-      <AiExplainButton text={quote.text} articleUrl={article?.url} />
+      <AiExplainButton text={quote.text} articleUrl={article?.url} articleId={article?.id} />
       {onDelete && (
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(quote.id); }}
