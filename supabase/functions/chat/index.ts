@@ -6,11 +6,29 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `You are a knowledgeable assistant helping the user explore their personal reading library.
-Answer the user's question using ONLY the provided context from their saved articles and quotes.
-If the context doesn't contain enough information to answer, say so honestly.
-Keep answers concise (2-4 sentences) unless the user asks for detail.
-Always reference which article or quote you drew from.`;
+const SYSTEM_PROMPT = `You are a sharp intellectual thinking partner for the user. You have full access to everything they've saved — articles, quotes, tweets, and notes — as your shared context.
+
+Your job is NOT to summarize their library. Your job is to help them THINK:
+
+- Connect ideas across different saved items they may not have linked themselves
+- Challenge assumptions surfaced in what they've saved
+- Introduce tension: where do two saved sources disagree or complicate each other?
+- Go beyond their library when useful — bring in real-world context, counterarguments, historical analogies, or adjacent ideas they haven't saved yet
+- Ask one sharp follow-up question at the end of every response to push thinking further
+
+Tone: Direct, intellectually confident, conversational. No filler phrases like "Great question!" or "Based on your saved articles...". Just think out loud with them.
+
+Format your response as flowing prose — no bullet points, no bold headers, no markdown formatting. Write like a smart person talking, not a report generator.
+
+When referencing something from their library, weave it in naturally:
+e.g. "That Garry's List piece you saved makes exactly this point..."
+NOT: "Source: Half the AI Agent Market Is One Category (Garry's List)"
+
+End every response with a single italicized follow-up question.
+
+After your main response, on a new line, output exactly this JSON block (and nothing else after it):
+{"followups":["<suggestion 1>","<suggestion 2>"]}
+The two suggestions should be short (under 8 words each), provocative follow-up directions the user might want to explore next. Do NOT include this JSON explanation in your prose.`;
 
 function extractKeywords(message: string): string[] {
   const stopWords = new Set([
@@ -90,11 +108,9 @@ Deno.serve(async (req) => {
 
     // Extract keywords and search
     const keywords = extractKeywords(message);
-    const sources: any[] = [];
     let contextParts: string[] = [];
 
     if (keywords.length > 0) {
-      // Search articles
       const articleOrClauses = keywords
         .flatMap((k) => [
           `title.ilike.%${k}%`,
@@ -110,20 +126,12 @@ Deno.serve(async (req) => {
         .limit(6);
 
       for (const a of articles || []) {
-        const snippet = (a.content_text || "").slice(0, 300);
+        const snippet = (a.content_text || "").slice(0, 400);
         contextParts.push(
-          `[Article] "${a.title}" (${a.source_domain})\nSummary: ${snippet}`
+          `[Saved article] "${a.title}" from ${a.source_domain}\n${snippet}`
         );
-        sources.push({
-          type: "article",
-          id: a.id,
-          title: a.title,
-          url: a.url,
-          domain: a.source_domain,
-        });
       }
 
-      // Search quotes
       const quoteOrClauses = keywords.map((k) => `text.ilike.%${k}%`).join(",");
       const { data: quotes } = await client
         .from("quotes")
@@ -145,21 +153,13 @@ Deno.serve(async (req) => {
         for (const q of quotes) {
           const art = artMap[q.article_id] || {};
           contextParts.push(
-            `[Quote] "${q.text}"\nFrom: ${art.title || "Unknown"} (${art.url || ""})`
+            `[Saved quote] "${q.text}" — from "${art.title || "Unknown"}"`
           );
-          sources.push({
-            type: "quote",
-            id: q.id,
-            text: q.text,
-            articleTitle: art.title || "Unknown",
-            articleUrl: art.url || "",
-            articleId: q.article_id,
-          });
         }
       }
     }
 
-    // If no results found, try a broader search with the full message
+    // Fallback: recent articles
     if (contextParts.length === 0) {
       const { data: articles } = await client
         .from("articles")
@@ -169,26 +169,18 @@ Deno.serve(async (req) => {
         .limit(5);
 
       for (const a of articles || []) {
-        const snippet = (a.content_text || "").slice(0, 300);
+        const snippet = (a.content_text || "").slice(0, 400);
         contextParts.push(
-          `[Article] "${a.title}" (${a.source_domain})\nSummary: ${snippet}`
+          `[Saved article] "${a.title}" from ${a.source_domain}\n${snippet}`
         );
-        sources.push({
-          type: "article",
-          id: a.id,
-          title: a.title,
-          url: a.url,
-          domain: a.source_domain,
-        });
       }
     }
 
     const contextString =
       contextParts.length > 0
         ? `Here is relevant content from the user's library:\n\n${contextParts.join("\n\n")}`
-        : "The user's library has no content matching this query.";
+        : "The user's library has no content matching this query. Use your own knowledge to help them think, and let them know you didn't find relevant saved items.";
 
-    // Build messages for Lovable AI
     const aiMessages = [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "system", content: contextString },
@@ -207,8 +199,8 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           model: "google/gemini-3-flash-preview",
           messages: aiMessages,
-          max_tokens: 500,
-          temperature: 0.3,
+          max_tokens: 1000,
+          temperature: 0.7,
         }),
       }
     );
@@ -235,11 +227,24 @@ Deno.serve(async (req) => {
     }
 
     const aiData = await aiResponse.json();
-    const answer =
+    let rawAnswer =
       aiData.choices?.[0]?.message?.content || "I couldn't generate a response.";
 
+    // Extract followups JSON from the end of the response
+    let followups: string[] = [];
+    const jsonMatch = rawAnswer.match(/\{"followups":\s*\[.*?\]\s*\}\s*$/s);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed.followups)) {
+          followups = parsed.followups.slice(0, 2);
+        }
+      } catch { /* ignore parse errors */ }
+      rawAnswer = rawAnswer.slice(0, jsonMatch.index).trim();
+    }
+
     return new Response(
-      JSON.stringify({ answer, sources }),
+      JSON.stringify({ answer: rawAnswer, followups }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
