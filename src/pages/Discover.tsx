@@ -23,11 +23,22 @@ interface ExternalItem {
 
 const RSS2JSON_BASE = "https://api.rss2json.com/v1/api.json?rss_url=";
 
-/** Convert Google News RSS redirect URL to a browser-followable redirect URL */
-function fixGoogleNewsUrl(gnewsUrl: string): string {
-  // RSS links use /rss/articles/... which doesn't redirect in browsers.
-  // Replace with /stories/... which does redirect properly.
-  return gnewsUrl.replace("news.google.com/rss/articles/", "news.google.com/stories/");
+/** Check if a URL is a Google News redirect URL */
+function isGoogleNewsUrl(url: string): boolean {
+  return url.includes("news.google.com/rss/articles/");
+}
+
+/** Resolve a Google News URL via edge function */
+async function resolveGoogleNewsUrl(gnewsUrl: string): Promise<string> {
+  try {
+    const { data, error } = await supabase.functions.invoke("resolve-url", {
+      body: { url: gnewsUrl },
+    });
+    if (error || !data?.resolved) return gnewsUrl;
+    return data.resolved;
+  } catch {
+    return gnewsUrl;
+  }
 }
 
 async function fetchRssFeed(rssUrl: string): Promise<ExternalItem[]> {
@@ -38,9 +49,7 @@ async function fetchRssFeed(rssUrl: string): Promise<ExternalItem[]> {
     if (json.status !== "ok" || !json.items) return [];
     return json.items.map((item: any) => {
       const rawLink = item.link || "";
-      const link = rawLink.includes("news.google.com/rss/articles/")
-        ? fixGoogleNewsUrl(rawLink)
-        : rawLink;
+      const link = rawLink; // Keep original Google News URL; resolved on click
       // Strip " - Source" suffix from Google News titles
       const rawTitle = item.title || "";
       const title = rawTitle.replace(/\s*-\s*[^-]+$/, "");
@@ -416,6 +425,21 @@ function ExternalCard({
   onSave: () => void;
   saving: boolean;
 }) {
+  const [resolving, setResolving] = useState(false);
+
+  const handleOpen = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isGoogleNewsUrl(item.link)) {
+      setResolving(true);
+      const resolved = await resolveGoogleNewsUrl(item.link);
+      setResolving(false);
+      window.open(resolved, "_blank", "noopener,noreferrer");
+    } else {
+      window.open(item.link, "_blank", "noopener,noreferrer");
+    }
+  };
+
   const formattedDate = (() => {
     try {
       return format(new Date(item.pubDate), "MMM d, yyyy");
@@ -481,15 +505,13 @@ function ExternalCard({
             <BookmarkPlus className="h-3 w-3" />
             {saving ? "Saving…" : "Save"}
           </Button>
-          <a
-            href={item.link}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={handleOpen}
+            disabled={resolving}
             className="text-xs text-accent hover:underline flex items-center gap-1"
-            onClick={(e) => e.stopPropagation()}
           >
-            Open <ExternalLink className="h-3 w-3" />
-          </a>
+            {resolving ? "Opening…" : "Open"} <ExternalLink className="h-3 w-3" />
+          </button>
         </div>
       </div>
     </div>
