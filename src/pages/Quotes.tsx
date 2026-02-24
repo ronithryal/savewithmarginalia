@@ -1,10 +1,13 @@
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
 import QuoteCard from "@/components/QuoteCard";
 
 const Quotes = () => {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const { data: quotes, isLoading } = useQuery({
     queryKey: ["all-quotes"],
@@ -18,6 +21,20 @@ const Quotes = () => {
     },
     enabled: !!user,
   });
+
+  const handleDelete = async (id: string) => {
+    const { error } = await supabase.from("quotes").delete().eq("id", id);
+    if (error) {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+    } else {
+      queryClient.invalidateQueries({ queryKey: ["all-quotes"] });
+    }
+  };
+
+  const handleTextEdit = async (id: string, newText: string) => {
+    await supabase.from("quotes").update({ text: newText }).eq("id", id);
+    queryClient.invalidateQueries({ queryKey: ["all-quotes"] });
+  };
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-16 animate-fade-in">
@@ -41,6 +58,8 @@ const Quotes = () => {
               key={quote.id}
               quote={quote}
               article={article}
+              onDelete={handleDelete}
+              onTextEdit={handleTextEdit}
             />
           );
         })}
