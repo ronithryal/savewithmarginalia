@@ -208,7 +208,18 @@ const ArticleCard = ({ article, fullWidth = false, onDelete }: ArticleCardProps)
             <Link2 className="h-3.5 w-3.5" />
             <span className="text-xs">{article.source_domain}</span>
           </div>
-          <span className="text-xs text-muted-foreground">{formattedDate}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">{formattedDate}</span>
+            <a
+              href={article.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium text-accent hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Open →
+            </a>
+          </div>
         </div>
       </div>
 
