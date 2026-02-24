@@ -14,15 +14,21 @@ interface QuoteCardProps {
     id: string;
     title: string;
     source_domain?: string;
+    url?: string;
   } | null;
   fullWidth?: boolean;
   onDelete?: (id: string) => void;
   onTextEdit?: (id: string, newText: string) => void;
 }
 
-const AiExplainButton = ({ text }: { text: string }) => {
+const AiExplainButton = ({ text, articleUrl }: { text: string; articleUrl?: string }) => {
   const navigate = useNavigate();
-  const snippet = text.length > 120 ? text.slice(0, 120) + "…" : text;
+  const stripHeadline = (t: string) => t.replace(/^the headline:\s*/i, "");
+  const cleaned = stripHeadline(text);
+  const snippet = cleaned.length > 120 ? cleaned.slice(0, 120) + "…" : cleaned;
+  const message = articleUrl
+    ? `Explain this quote: "${snippet}"\n\nSource: ${articleUrl}`
+    : `Explain this quote: "${snippet}"`;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -30,7 +36,7 @@ const AiExplainButton = ({ text }: { text: string }) => {
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            navigate("/chat", { state: { initialMessage: `Explain this quote: "${snippet}"` } });
+            navigate("/chat", { state: { initialMessage: message } });
           }}
           className="absolute top-2 right-10 bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-accent transition-colors p-1.5 rounded-md opacity-0 group-hover:opacity-100 text-[10px] font-bold leading-none"
           aria-label="Explain this quote with AI"
@@ -152,7 +158,7 @@ const QuoteCard = ({ quote, article, fullWidth = false, onDelete, onTextEdit }: 
         </div>
       </div>
 
-      <AiExplainButton text={quote.text} />
+      <AiExplainButton text={quote.text} articleUrl={article?.url} />
       {onDelete && (
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(quote.id); }}
