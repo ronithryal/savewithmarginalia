@@ -131,11 +131,7 @@ const QuoteCard = ({ quote, article, fullWidth = false, onDelete, onTextEdit }: 
         <EditableText text={quote.text} quoteId={quote.id} onTextEdit={onTextEdit} />
 
         <div className="flex items-center justify-between mt-3">
-          <div className="flex items-center gap-1.5 text-muted-foreground min-w-0">
-            <span className="text-xs truncate">
-              {article?.title || "Unknown source"}
-            </span>
-          </div>
+          <div className="min-w-0" />
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">{formattedDate}</span>
             {article?.id && (
