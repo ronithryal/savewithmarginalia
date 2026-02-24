@@ -126,20 +126,34 @@ const Chat = () => {
     fetchStarters();
   }, [user]);
 
-  // Auto-apply tags from source article to a chat session
+  // Auto-apply tags from source article and/or quote to a chat session
   const applySourceTags = useCallback(
-    async (sessionId: string, sourceArticleId: string) => {
-      // Get tags from the source article
-      const { data: articleTags } = await supabase
-        .from("article_tags")
-        .select("tag_id")
-        .eq("article_id", sourceArticleId);
-      if (!articleTags || articleTags.length === 0) return;
+    async (sessionId: string, sourceArticleId?: string, sourceQuoteId?: string) => {
+      const tagIds = new Set<string>();
 
-      // Insert tags for the chat session
-      const inserts = articleTags.map((at) => ({
+      // Get tags from the source article
+      if (sourceArticleId) {
+        const { data: articleTags } = await supabase
+          .from("article_tags")
+          .select("tag_id")
+          .eq("article_id", sourceArticleId);
+        (articleTags ?? []).forEach((at) => tagIds.add(at.tag_id));
+      }
+
+      // Get tags directly on the quote
+      if (sourceQuoteId) {
+        const { data: quoteTags } = await supabase
+          .from("quote_tags")
+          .select("tag_id")
+          .eq("quote_id", sourceQuoteId);
+        (quoteTags ?? []).forEach((qt) => tagIds.add(qt.tag_id));
+      }
+
+      if (tagIds.size === 0) return;
+
+      const inserts = Array.from(tagIds).map((tag_id) => ({
         session_id: sessionId,
-        tag_id: at.tag_id,
+        tag_id,
       }));
       await supabase.from("chat_session_tags" as any).insert(inserts);
     },
@@ -170,7 +184,7 @@ const Chat = () => {
   );
 
   const send = useCallback(
-    async (text: string, sourceArticleId?: string) => {
+    async (text: string, sourceArticleId?: string, sourceQuoteId?: string) => {
       if (!text.trim() || loading || !user) return;
       const trimmed = text.trim();
       setLoading(true);
@@ -186,9 +200,9 @@ const Chat = () => {
         }
         setActiveSessionId(sessionId);
 
-        // Auto-apply tags from source article
-        if (sourceArticleId) {
-          applySourceTags(sessionId, sourceArticleId);
+        // Auto-apply tags from source article/quote
+        if (sourceArticleId || sourceQuoteId) {
+          applySourceTags(sessionId, sourceArticleId, sourceQuoteId);
         }
       }
 
@@ -260,13 +274,14 @@ const Chat = () => {
 
   // Handle initial message from navigation state (e.g. "Explain this" from article card)
   useEffect(() => {
-    const state = location.state as { initialMessage?: string; sourceArticleId?: string } | null;
+    const state = location.state as { initialMessage?: string; sourceArticleId?: string; sourceQuoteId?: string } | null;
     if (state?.initialMessage && !initialMessageHandled.current && chatEnabled === true && user) {
       initialMessageHandled.current = true;
       const sourceArticleId = state.sourceArticleId;
+      const sourceQuoteId = state.sourceQuoteId;
       // Clear navigation state to prevent re-send on refresh
       window.history.replaceState({}, document.title);
-      send(state.initialMessage, sourceArticleId);
+      send(state.initialMessage, sourceArticleId, sourceQuoteId);
     }
   }, [chatEnabled, user, location.state, send]);
 

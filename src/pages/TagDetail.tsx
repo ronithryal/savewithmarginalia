@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,7 +15,9 @@ const TagDetail = () => {
   const tagName = decodeURIComponent(slug || "");
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<Filter>("all");
+  const [searchParams] = useSearchParams();
+  const initialFilter = (searchParams.get("filter") as Filter) || "all";
+  const [filter, setFilter] = useState<Filter>(initialFilter);
 
   const { data: tag } = useQuery({
     queryKey: ["tag-by-name", tagName],
