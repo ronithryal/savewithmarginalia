@@ -2,14 +2,14 @@ import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { RefreshCw, ExternalLink, BookmarkPlus } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { RefreshCw, ExternalLink, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import ArticleCard from "@/components/ArticleCard";
 import { format } from "date-fns";
-import { toast } from "sonner";
+
 
 interface ExternalItem {
   title: string;
@@ -167,7 +167,7 @@ const Discover = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [savingUrl, setSavingUrl] = useState<string | null>(null);
+  
 
   // Count total saved items
   const { data: totalItems } = useQuery({
@@ -379,49 +379,10 @@ const Discover = () => {
     queryClient.invalidateQueries({ queryKey: ["discover-unread"] });
   };
 
-  const handleSaveExternal = async (item: { link: string; title: string; thumbnail?: string }) => {
-    if (!user || savingUrl) return;
-    setSavingUrl(item.link);
-    try {
-      const domain = (() => {
-        try { return new URL(item.link).hostname.replace("www.", ""); }
-        catch { return ""; }
-      })();
+  const navigate = useNavigate();
 
-      const { data: existing } = await supabase
-        .from("articles")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("url", item.link)
-        .maybeSingle();
-
-      if (existing) {
-        toast.info("Already in your library.");
-        setSavingUrl(null);
-        return;
-      }
-
-      const { data, error } = await supabase.from("articles").insert({
-        user_id: user.id,
-        url: item.link,
-        title: item.title || "Untitled article",
-        source_domain: domain,
-        preview_image_url: item.thumbnail || null,
-        content_text: "",
-      }).select().single();
-
-      if (error) throw error;
-
-      supabase.functions.invoke("parse-article", {
-        body: { article_id: data.id },
-      }).catch(console.error);
-
-      toast.success("Saved to library!");
-      queryClient.invalidateQueries({ queryKey: ["discover-saved-urls"] });
-    } catch {
-      toast.error("Failed to save.");
-    }
-    setSavingUrl(null);
+  const handleAddExternal = (url: string) => {
+    navigate("/?url=" + encodeURIComponent(url));
   };
 
   const tooFewItems = totalItems !== undefined && totalItems < 3;
@@ -480,8 +441,7 @@ const Discover = () => {
                     key={item.link}
                     item={item}
                     badge={item.matchedTag}
-                    onSave={() => handleSaveExternal(item)}
-                    saving={savingUrl === item.link}
+                    onAdd={() => handleAddExternal(item.link)}
                   />
                 ))}
               </div>
@@ -514,8 +474,7 @@ const Discover = () => {
                   <RedditCard
                     key={item.link}
                     item={item}
-                    onSave={() => handleSaveExternal(item)}
-                    saving={savingUrl === item.link}
+                    onAdd={() => handleAddExternal(item.link)}
                   />
                 ))}
               </div>
@@ -551,8 +510,7 @@ const Discover = () => {
                       key={item.link}
                       item={item}
                       badge={item.creatorLabel}
-                      onSave={() => handleSaveExternal(item)}
-                      saving={savingUrl === item.link}
+                      onAdd={() => handleAddExternal(item.link)}
                     />
                   ))}
                 </div>
@@ -609,13 +567,11 @@ const Discover = () => {
 function ExternalCard({
   item,
   badge,
-  onSave,
-  saving,
+  onAdd,
 }: {
   item: ExternalItem;
   badge?: string;
-  onSave: () => void;
-  saving: boolean;
+  onAdd: () => void;
 }) {
   const formattedDate = (() => {
     try { return format(new Date(item.pubDate), "MMM d, yyyy"); }
@@ -649,19 +605,13 @@ function ExternalCard({
           {item.title || "Untitled"}
         </h3>
 
-        <div className="mt-auto flex items-center gap-1.5 text-muted-foreground min-w-0">
-          {item.meta && (
-            <span className="text-[11px]">{item.meta}</span>
-          )}
-          {item.meta && formattedDate && (
-            <span className="text-[11px]">·</span>
-          )}
-          {formattedDate && (
+        {formattedDate && (
+          <div className="mt-auto text-muted-foreground">
             <span className="text-[11px]">{formattedDate}</span>
-          )}
-        </div>
+          </div>
+        )}
 
-        <div className="flex items-center gap-2 mt-3">
+        <div className="flex items-center justify-between mt-3">
           <Button
             variant="outline"
             size="sm"
@@ -669,12 +619,11 @@ function ExternalCard({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onSave();
+              onAdd();
             }}
-            disabled={saving}
           >
-            <BookmarkPlus className="h-3 w-3" />
-            {saving ? "Saving…" : "Save"}
+            <Plus className="h-3 w-3" />
+            Add
           </Button>
           <a
             href={item.link}
@@ -690,15 +639,12 @@ function ExternalCard({
   );
 }
 
-// --- RedditCard ---
 function RedditCard({
   item,
-  onSave,
-  saving,
+  onAdd,
 }: {
   item: RedditItem;
-  onSave: () => void;
-  saving: boolean;
+  onAdd: () => void;
 }) {
   const formattedDate = (() => {
     try { return format(new Date(item.pubDate), "MMM d, yyyy"); }
@@ -716,17 +662,13 @@ function RedditCard({
           {item.title || "Untitled"}
         </h3>
 
-        <div className="mt-auto flex items-center gap-1.5 text-muted-foreground min-w-0">
-          <span className="text-[11px]">{formatScore(item.score)}</span>
-          {formattedDate && (
-            <>
-              <span className="text-[11px]">·</span>
-              <span className="text-[11px]">{formattedDate}</span>
-            </>
-          )}
-        </div>
+        {formattedDate && (
+          <div className="mt-auto text-muted-foreground">
+            <span className="text-[11px]">{formattedDate}</span>
+          </div>
+        )}
 
-        <div className="flex items-center gap-2 mt-3">
+        <div className="flex items-center justify-between mt-3">
           <Button
             variant="outline"
             size="sm"
@@ -734,12 +676,11 @@ function RedditCard({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onSave();
+              onAdd();
             }}
-            disabled={saving}
           >
-            <BookmarkPlus className="h-3 w-3" />
-            {saving ? "Saving…" : "Save"}
+            <Plus className="h-3 w-3" />
+            Add
           </Button>
           <a
             href={item.link}
