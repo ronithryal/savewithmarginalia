@@ -38,20 +38,24 @@ const TopNav = () => {
                 {link.label}
               </Link>
             ))}
-            {/* TODO: Build /search page with AI embeddings */}
             <Link
               to="/search"
-              className="px-3 py-1.5 text-sm font-medium rounded-md text-muted-foreground/50 cursor-default"
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                location.pathname === "/search"
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
             >
               Search
             </Link>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* TODO: Add search functionality with AI embeddings */}
-          <Button variant="ghost" size="icon" className="text-muted-foreground" disabled>
-            <Search className="h-4 w-4" />
-          </Button>
+          <Link to="/search">
+            <Button variant="ghost" size="icon" className="text-muted-foreground">
+              <Search className="h-4 w-4" />
+            </Button>
+          </Link>
           <Button variant="ghost" size="icon" className="text-muted-foreground" onClick={signOut}>
             <LogOut className="h-4 w-4" />
           </Button>
