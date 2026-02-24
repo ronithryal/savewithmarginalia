@@ -23,19 +23,49 @@ interface ExternalItem {
 
 const RSS2JSON_BASE = "https://api.rss2json.com/v1/api.json?rss_url=";
 
+/** Decode actual article URL from Google News redirect URL */
+function decodeGoogleNewsUrl(gnewsUrl: string): string {
+  try {
+    const match = gnewsUrl.match(/\/articles\/([^?]+)/);
+    if (!match) return gnewsUrl;
+    const b64 = match[1].replace(/-/g, '+').replace(/_/g, '/');
+    const binary = atob(b64);
+    const httpIndex = binary.indexOf('http');
+    if (httpIndex === -1) return gnewsUrl;
+    let url = '';
+    for (let i = httpIndex; i < binary.length; i++) {
+      const code = binary.charCodeAt(i);
+      if (code < 32 || code > 126) break;
+      url += binary.charAt(i);
+    }
+    return url || gnewsUrl;
+  } catch {
+    return gnewsUrl;
+  }
+}
+
 async function fetchRssFeed(rssUrl: string): Promise<ExternalItem[]> {
   try {
     const res = await fetch(`${RSS2JSON_BASE}${encodeURIComponent(rssUrl)}`);
     if (!res.ok) return [];
     const json = await res.json();
     if (json.status !== "ok" || !json.items) return [];
-    return json.items.map((item: any) => ({
-      title: item.title || "",
-      link: item.link || "",
-      pubDate: item.pubDate || "",
-      thumbnail: item.thumbnail || item.enclosure?.link || "",
-      source: json.feed?.title || "",
-    }));
+    return json.items.map((item: any) => {
+      const rawLink = item.link || "";
+      const link = rawLink.includes("news.google.com/rss/articles/")
+        ? decodeGoogleNewsUrl(rawLink)
+        : rawLink;
+      // Strip " - Source" suffix from Google News titles
+      const rawTitle = item.title || "";
+      const title = rawTitle.replace(/\s*-\s*[^-]+$/, "");
+      return {
+        title,
+        link,
+        pubDate: item.pubDate || "",
+        thumbnail: item.thumbnail || item.enclosure?.link || "",
+        source: json.feed?.title || "",
+      };
+    });
   } catch {
     return [];
   }
