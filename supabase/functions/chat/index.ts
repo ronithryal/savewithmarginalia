@@ -86,8 +86,22 @@ Deno.serve(async (req) => {
     }
     const userId = claimsData.claims.sub as string;
 
-    const { message, history } = await req.json();
-    if (!message) {
+    const { message, history, messages: messagesArray } = await req.json();
+    
+    // Support both old format (message + history) and new format (messages array)
+    let conversationMessages: { role: string; content: string }[] = [];
+    let lastUserMessage = "";
+    
+    if (messagesArray && Array.isArray(messagesArray)) {
+      conversationMessages = messagesArray;
+      const lastUser = [...messagesArray].reverse().find((m: any) => m.role === "user");
+      lastUserMessage = lastUser?.content || "";
+    } else if (message) {
+      lastUserMessage = message;
+      conversationMessages = [...(history || []), { role: "user", content: message }];
+    }
+    
+    if (!lastUserMessage) {
       return new Response(JSON.stringify({ error: "message is required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -108,8 +122,8 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Extract keywords and search
-    const keywords = extractKeywords(message);
+    // Extract keywords from last user message
+    const keywords = extractKeywords(lastUserMessage);
     let contextParts: string[] = [];
 
     if (keywords.length > 0) {
@@ -186,8 +200,7 @@ Deno.serve(async (req) => {
     const aiMessages = [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "system", content: contextString },
-      ...(history || []),
-      { role: "user", content: message },
+      ...conversationMessages,
     ];
 
     const aiResponse = await fetch(

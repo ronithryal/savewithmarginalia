@@ -1,77 +1,36 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { Send, X } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
+import { ChatSidebar } from "@/components/chat/ChatSidebar";
+import { ChatPanel } from "@/components/chat/ChatPanel";
+import { useIsMobile } from "@/hooks/use-mobile";
 
-interface ChatMessage {
+export interface ChatMessage {
+  id?: string;
   role: "user" | "assistant";
   content: string;
   followups?: string[];
 }
 
-const STORAGE_KEY = "library-chat-history";
-
-function loadHistory(): ChatMessage[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
+export interface ChatSession {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
 }
-
-function saveHistory(messages: ChatMessage[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-}
-
-const ThinkingDots = () => (
-  <div className="flex justify-start">
-    <div className="bg-secondary rounded-lg px-4 py-3 max-w-[85%]">
-      <div className="flex items-center gap-1">
-        <span className="text-sm text-muted-foreground mr-1">Thinking</span>
-        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:0ms]" />
-        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:150ms]" />
-        <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50 animate-bounce [animation-delay:300ms]" />
-      </div>
-    </div>
-  </div>
-);
-
-const FollowupButtons = ({ followups, onSend }: { followups: string[]; onSend: (text: string) => void }) => {
-  if (!followups || followups.length === 0) return null;
-  return (
-    <div className="flex gap-2 mt-2 ml-1">
-      {followups.map((f, i) => (
-        <button
-          key={i}
-          onClick={() => onSend(f)}
-          className="text-xs border border-border/60 rounded-full px-3 py-1.5 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
-        >
-          {f}
-        </button>
-      ))}
-    </div>
-  );
-};
 
 const Chat = () => {
   const { user } = useAuth();
-  const [messages, setMessages] = useState<ChatMessage[]>(loadHistory);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  const isMobile = useIsMobile();
   const [chatEnabled, setChatEnabled] = useState<boolean | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [starters, setStarters] = useState<string[]>([]);
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  // Persist to localStorage
-  useEffect(() => {
-    saveHistory(messages);
-  }, [messages]);
 
   // Check chat enabled
   useEffect(() => {
@@ -86,11 +45,49 @@ const Chat = () => {
       });
   }, [user]);
 
-  // Generate dynamic starters from user's top tag
+  // Load sessions
+  const loadSessions = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase
+      .from("chat_sessions" as any)
+      .select("*")
+      .eq("user_id", user.id)
+      .order("updated_at", { ascending: false });
+    setSessions((data as any) || []);
+  }, [user]);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
+
+  // Load messages for active session
+  useEffect(() => {
+    if (!activeSessionId) {
+      setMessages([]);
+      return;
+    }
+    const load = async () => {
+      const { data } = await supabase
+        .from("chat_messages" as any)
+        .select("*")
+        .eq("session_id", activeSessionId)
+        .order("created_at", { ascending: true });
+      setMessages(
+        ((data as any) || []).map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          followups: m.followups,
+        }))
+      );
+    };
+    load();
+  }, [activeSessionId]);
+
+  // Generate dynamic starters
   useEffect(() => {
     if (!user) return;
     const fetchStarters = async () => {
-      // Get most-used tag
       const { data: tagLinks } = await supabase
         .from("article_tags")
         .select("tag_id")
@@ -105,13 +102,11 @@ const Chat = () => {
         return;
       }
 
-      // Count tag frequency
       const freq: Record<string, number> = {};
       for (const t of tagLinks) {
         freq[t.tag_id] = (freq[t.tag_id] || 0) + 1;
       }
       const topTagId = Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
-
       const { data: tagData } = await supabase
         .from("tags")
         .select("name")
@@ -119,7 +114,6 @@ const Chat = () => {
         .single();
 
       const topTag = tagData?.name || "technology";
-
       setStarters([
         `What tensions exist in what I've saved about ${topTag}?`,
         "What's the strongest idea across everything I've saved?",
@@ -129,63 +123,140 @@ const Chat = () => {
     fetchStarters();
   }, [user]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  const createSession = useCallback(
+    async (firstMessage: string): Promise<string | null> => {
+      if (!user) return null;
+      const title =
+        firstMessage.length > 50
+          ? firstMessage.slice(0, 47) + "…"
+          : firstMessage;
+      const { data, error } = await supabase
+        .from("chat_sessions" as any)
+        .insert({ user_id: user.id, title })
+        .select("id")
+        .single();
+      if (error || !data) {
+        toast.error("Failed to create session");
+        return null;
+      }
+      const newId = (data as any).id;
+      await loadSessions();
+      return newId;
+    },
+    [user, loadSessions]
+  );
 
-  const messagesRef = useRef(messages);
-  messagesRef.current = messages;
+  const send = useCallback(
+    async (text: string) => {
+      if (!text.trim() || loading || !user) return;
+      const trimmed = text.trim();
+      setLoading(true);
 
-  const loadingRef = useRef(loading);
-  loadingRef.current = loading;
+      let sessionId = activeSessionId;
 
-  const send = useCallback(async (text: string) => {
-    if (!text.trim() || loadingRef.current) return;
-    const trimmed = text.trim();
-    const userMsg: ChatMessage = { role: "user", content: trimmed };
-    const history = messagesRef.current.map((m) => ({ role: m.role, content: m.content }));
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setLoading(true);
+      // Create session if needed
+      if (!sessionId) {
+        sessionId = await createSession(trimmed);
+        if (!sessionId) {
+          setLoading(false);
+          return;
+        }
+        setActiveSessionId(sessionId);
+      }
 
-    try {
-      const { data, error } = await supabase.functions.invoke("chat", {
-        body: { message: trimmed, history },
-      });
-
-      if (error) throw error;
-
-      if (data?.error) {
-        toast.error(data.error);
+      // Insert user message
+      const { error: insertErr } = await supabase
+        .from("chat_messages" as any)
+        .insert({
+          session_id: sessionId,
+          role: "user",
+          content: trimmed,
+        });
+      if (insertErr) {
+        toast.error("Failed to save message");
         setLoading(false);
         return;
       }
 
-      setMessages((prev) => [
-        ...prev,
-        {
+      const userMsg: ChatMessage = { role: "user", content: trimmed };
+      const currentMessages = [...messages, userMsg];
+      setMessages(currentMessages);
+
+      try {
+        const { data, error } = await supabase.functions.invoke("chat", {
+          body: {
+            messages: currentMessages.map((m) => ({
+              role: m.role,
+              content: m.content,
+            })),
+          },
+        });
+
+        if (error) throw error;
+        if (data?.error) {
+          toast.error(data.error);
+          setLoading(false);
+          return;
+        }
+
+        const followups = data.followups || [];
+
+        // Insert assistant message
+        await supabase.from("chat_messages" as any).insert({
+          session_id: sessionId,
           role: "assistant",
           content: data.answer,
-          followups: data.followups,
-        },
-      ]);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to get response");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+          followups,
+        });
 
-  const clearConversation = () => {
+        // Update session timestamp
+        await supabase
+          .from("chat_sessions" as any)
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", sessionId);
+
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: data.answer, followups },
+        ]);
+
+        loadSessions();
+      } catch (e: any) {
+        toast.error(e.message || "Failed to get response");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [activeSessionId, messages, loading, user, createSession, loadSessions]
+  );
+
+  const handleNewChat = () => {
+    setActiveSessionId(null);
     setMessages([]);
-    localStorage.removeItem(STORAGE_KEY);
+    if (isMobile) setSidebarOpen(false);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send(input);
+  const handleSelectSession = (id: string) => {
+    setActiveSessionId(id);
+    if (isMobile) setSidebarOpen(false);
+  };
+
+  const handleDeleteSession = async (id: string) => {
+    await supabase.from("chat_sessions" as any).delete().eq("id", id);
+    if (activeSessionId === id) {
+      setActiveSessionId(null);
+      setMessages([]);
     }
+    loadSessions();
+  };
+
+  const handleClearMessages = async () => {
+    if (!activeSessionId) return;
+    await supabase
+      .from("chat_messages" as any)
+      .delete()
+      .eq("session_id", activeSessionId);
+    setMessages([]);
   };
 
   if (!user) return null;
@@ -215,99 +286,53 @@ const Chat = () => {
     );
   }
 
-  const hasMessages = messages.length > 0;
-
   return (
-    <div className="mx-auto max-w-3xl px-6 py-6 animate-fade-in flex flex-col" style={{ height: "calc(100vh - 3.5rem)" }}>
-      {/* Header */}
-      <div className="mb-4 flex items-start justify-between">
-        <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
-            Chat with your library
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Think through ideas using everything you've saved.
-          </p>
-        </div>
-        {hasMessages && (
-          <button
-            onClick={clearConversation}
-            className="text-xs text-muted-foreground hover:text-foreground transition-colors mt-2 flex items-center gap-1"
-          >
-            <X className="h-3 w-3" />
-            Clear
-          </button>
-        )}
-      </div>
-
-      {/* Messages area */}
-      <ScrollArea className="flex-1 min-h-0 mb-4">
-        <div className="space-y-4 pb-2">
-          {/* Empty state */}
-          {!hasMessages && !loading && (
-            <div className="flex flex-col items-center justify-center pt-32 gap-8">
-              <p className="text-muted-foreground text-lg italic">
-                What are you thinking about?
-              </p>
-              <div className="flex flex-wrap justify-center gap-2 max-w-lg">
-                {starters.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => send(s)}
-                    className="rounded-full border border-border px-4 py-2 text-sm text-foreground hover:bg-secondary transition-colors"
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
+    <div
+      className="flex animate-fade-in"
+      style={{ height: "calc(100vh - 3.5rem)" }}
+    >
+      {/* Sidebar — desktop always visible, mobile as overlay */}
+      {isMobile ? (
+        sidebarOpen && (
+          <div className="fixed inset-0 z-50 flex">
+            <div
+              className="absolute inset-0 bg-background/60 backdrop-blur-sm"
+              onClick={() => setSidebarOpen(false)}
+            />
+            <div className="relative z-10 w-[280px] bg-background border-r border-border h-full animate-fade-in">
+              <ChatSidebar
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+                onNewChat={handleNewChat}
+                onSelectSession={handleSelectSession}
+                onDeleteSession={handleDeleteSession}
+              />
             </div>
-          )}
-
-          {messages.map((msg, i) => (
-            <div key={i}>
-              <div className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div
-                  className={`rounded-lg px-4 py-3 ${
-                    msg.role === "user"
-                      ? "bg-accent text-accent-foreground max-w-[70%] text-sm"
-                      : "bg-secondary text-foreground max-w-[85%]"
-                  }`}
-                  style={msg.role === "assistant" ? { fontSize: "16px", lineHeight: "1.75" } : undefined}
-                >
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                </div>
-              </div>
-              {/* Follow-up buttons after assistant messages */}
-              {msg.role === "assistant" && (
-                <FollowupButtons followups={msg.followups || []} onSend={send} />
-              )}
-            </div>
-          ))}
-
-          {loading && <ThinkingDots />}
-
-          <div ref={bottomRef} />
+          </div>
+        )
+      ) : (
+        <div className="w-[260px] shrink-0 border-r border-border">
+          <ChatSidebar
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            onNewChat={handleNewChat}
+            onSelectSession={handleSelectSession}
+            onDeleteSession={handleDeleteSession}
+          />
         </div>
-      </ScrollArea>
+      )}
 
-      {/* Input row */}
-      <div className="flex gap-2 items-end border-t border-border pt-3">
-        <Textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Ask about your library…"
-          className="min-h-[44px] max-h-[100px] resize-none flex-1"
-          rows={1}
+      {/* Main chat panel */}
+      <div className="flex-1 min-w-0">
+        <ChatPanel
+          messages={messages}
+          loading={loading}
+          starters={starters}
+          hasActiveSession={!!activeSessionId}
+          onSend={send}
+          onClearMessages={handleClearMessages}
+          onOpenSidebar={isMobile ? () => setSidebarOpen(true) : undefined}
         />
-        <Button
-          onClick={() => send(input)}
-          disabled={!input.trim() || loading}
-          size="icon"
-          className="bg-accent text-accent-foreground hover:bg-accent/90 shrink-0"
-        >
-          <Send className="h-4 w-4" />
-        </Button>
       </div>
     </div>
   );
