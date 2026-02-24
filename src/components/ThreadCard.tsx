@@ -22,7 +22,7 @@ const ThreadCard = ({ session, fullWidth = false, onDelete, onUnbookmark }: Thre
 
   return (
     <div
-      onClick={() => navigate("/chat")}
+      onClick={() => navigate("/chat", { state: { openSessionId: session.id } })}
       className={`group relative bg-[hsl(var(--article-card))] border border-[hsl(var(--article-card-border))] rounded-lg overflow-hidden cursor-pointer ${fullWidth ? "max-w-[680px] mx-auto" : ""}`}
     >
       <div className="p-4">
