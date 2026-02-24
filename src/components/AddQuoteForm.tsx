@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import TagInput from "@/components/TagInput";
+import TagSuggestions from "@/components/TagSuggestions";
 import { useQuery } from "@tanstack/react-query";
 
 interface AddQuoteFormProps {
@@ -18,6 +19,7 @@ const AddQuoteForm = ({ articleId, userId }: AddQuoteFormProps) => {
   const [quoteText, setQuoteText] = useState("");
   const [savingQuote, setSavingQuote] = useState(false);
   const [lastSavedQuoteId, setLastSavedQuoteId] = useState<string | null>(null);
+  const [lastSavedText, setLastSavedText] = useState("");
 
   const { data: quoteTagIds } = useQuery({
     queryKey: ["quote-tags", lastSavedQuoteId],
@@ -62,6 +64,7 @@ const AddQuoteForm = ({ articleId, userId }: AddQuoteFormProps) => {
       if (error) throw error;
       setQuoteText("");
       setLastSavedQuoteId(data.id);
+      setLastSavedText(data.text);
       queryClient.invalidateQueries({ queryKey: ["article-quotes", articleId] });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -100,8 +103,13 @@ const AddQuoteForm = ({ articleId, userId }: AddQuoteFormProps) => {
             onAttach={handleAttachQuoteTag}
             onDetach={handleDetachQuoteTag}
           />
+          <TagSuggestions
+            text={lastSavedText}
+            onAttachTag={handleAttachQuoteTag}
+            attachedTagIds={quoteTagIds ?? []}
+          />
           <button
-            onClick={() => setLastSavedQuoteId(null)}
+            onClick={() => { setLastSavedQuoteId(null); setLastSavedText(""); }}
             className="mt-2 text-xs text-muted-foreground hover:text-foreground"
           >
             Done

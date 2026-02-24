@@ -1,4 +1,7 @@
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { Switch } from "@/components/ui/switch";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -7,6 +10,43 @@ const bookmarkletCode = `javascript:(function(){const s=window.getSelection().to
 
 const Settings = () => {
   const { user } = useAuth();
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from("user_preferences" as any)
+      .select("ai_tags_enabled")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }: any) => {
+        if (data) setAiEnabled(data.ai_tags_enabled);
+        setLoaded(true);
+      });
+  }, [user]);
+
+  const toggleAi = async (checked: boolean) => {
+    if (!user) return;
+    setAiEnabled(checked);
+    const { data: existing } = await (supabase as any)
+      .from("user_preferences")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (existing) {
+      await (supabase as any)
+        .from("user_preferences")
+        .update({ ai_tags_enabled: checked })
+        .eq("user_id", user.id);
+    } else {
+      await (supabase as any)
+        .from("user_preferences")
+        .insert({ user_id: user.id, ai_tags_enabled: checked });
+    }
+  };
+
   if (!user) return null;
 
   return (
@@ -15,6 +55,25 @@ const Settings = () => {
         Settings
       </h1>
 
+      {/* AI Features */}
+      <section className="mb-12">
+        <h2 className="font-display text-xl font-semibold text-foreground mb-6">
+          AI Features
+        </h2>
+        <div className="flex items-center justify-between rounded-md border border-border p-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">Tag suggestions</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              When you save an article or quote, Marginalia uses AI to suggest relevant tags from your library.
+            </p>
+          </div>
+          {loaded && (
+            <Switch checked={aiEnabled} onCheckedChange={toggleAi} />
+          )}
+        </div>
+      </section>
+
+      {/* Save from anywhere */}
       <section className="mb-12">
         <h2 className="font-display text-xl font-semibold text-foreground mb-6">
           Save from anywhere
