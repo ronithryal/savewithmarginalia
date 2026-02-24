@@ -118,10 +118,44 @@ export type Database = {
           },
         ]
       }
+      chat_session_tags: {
+        Row: {
+          id: string
+          session_id: string
+          tag_id: string
+        }
+        Insert: {
+          id?: string
+          session_id: string
+          tag_id: string
+        }
+        Update: {
+          id?: string
+          session_id?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_session_tags_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "chat_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_session_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_sessions: {
         Row: {
           created_at: string
           id: string
+          is_bookmarked: boolean
           title: string
           updated_at: string
           user_id: string
@@ -129,6 +163,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_bookmarked?: boolean
           title?: string
           updated_at?: string
           user_id: string
@@ -136,6 +171,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_bookmarked?: boolean
           title?: string
           updated_at?: string
           user_id?: string

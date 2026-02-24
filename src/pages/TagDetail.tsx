@@ -6,8 +6,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import ArticleCard from "@/components/ArticleCard";
 import QuoteCard from "@/components/QuoteCard";
+import ThreadCard from "@/components/ThreadCard";
 
-type Filter = "all" | "articles" | "quotes";
+type Filter = "all" | "articles" | "quotes" | "threads";
 
 const TagDetail = () => {
   const { slug } = useParams<{ slug: string }>();
@@ -55,14 +56,12 @@ const TagDetail = () => {
     queryFn: async () => {
       const quoteIdSet = new Set<string>();
 
-      // Direct quote tags
       const { data: quoteTags } = await supabase
         .from("quote_tags")
         .select("quote_id")
         .eq("tag_id", tag!.id);
       (quoteTags ?? []).forEach((r) => quoteIdSet.add(r.quote_id));
 
-      // Indirect: quotes belonging to articles with this tag
       const { data: articleTags } = await supabase
         .from("article_tags")
         .select("article_id")
@@ -87,20 +86,44 @@ const TagDetail = () => {
     enabled: !!tag,
   });
 
+  const { data: threads } = useQuery({
+    queryKey: ["tag-threads", tag?.id],
+    queryFn: async () => {
+      const { data: sessionTags } = await supabase
+        .from("chat_session_tags" as any)
+        .select("session_id")
+        .eq("tag_id", tag!.id);
+      if (!sessionTags || sessionTags.length === 0) return [];
+      const sessionIds = (sessionTags as any[]).map((r) => r.session_id);
+      const { data: sessions } = await supabase
+        .from("chat_sessions" as any)
+        .select("*")
+        .in("id", sessionIds)
+        .eq("is_bookmarked", true)
+        .order("updated_at", { ascending: false });
+      return (sessions as any[]) ?? [];
+    },
+    enabled: !!tag,
+  });
+
   const ac = articles?.length ?? 0;
   const qc = quotes?.length ?? 0;
+  const tc = threads?.length ?? 0;
 
-  // Build mixed feed sorted by created_at desc
   type FeedItem =
     | { type: "article"; created_at: string; data: any }
-    | { type: "quote"; created_at: string; data: any };
+    | { type: "quote"; created_at: string; data: any }
+    | { type: "thread"; created_at: string; data: any };
 
   const feed: FeedItem[] = [];
-  if (filter !== "quotes") {
+  if (filter === "all" || filter === "articles") {
     (articles ?? []).forEach((a) => feed.push({ type: "article", created_at: a.created_at, data: a }));
   }
-  if (filter !== "articles") {
+  if (filter === "all" || filter === "quotes") {
     (quotes ?? []).forEach((q) => feed.push({ type: "quote", created_at: q.created_at, data: q }));
+  }
+  if (filter === "all" || filter === "threads") {
+    (threads ?? []).forEach((t) => feed.push({ type: "thread", created_at: (t as any).updated_at, data: t }));
   }
   feed.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
@@ -124,10 +147,21 @@ const TagDetail = () => {
     queryClient.invalidateQueries({ queryKey: ["tag-quotes", tag?.id] });
   };
 
+  const handleDeleteThread = async (id: string) => {
+    await supabase.from("chat_sessions" as any).delete().eq("id", id);
+    queryClient.invalidateQueries({ queryKey: ["tag-threads", tag?.id] });
+  };
+
+  const handleUnbookmarkThread = async (id: string) => {
+    await supabase.from("chat_sessions" as any).update({ is_bookmarked: false }).eq("id", id);
+    queryClient.invalidateQueries({ queryKey: ["tag-threads", tag?.id] });
+  };
+
   const pills: { label: string; value: Filter }[] = [
     { label: "All", value: "all" },
     { label: "Articles", value: "articles" },
     { label: "Quotes", value: "quotes" },
+    { label: "Threads", value: "threads" },
   ];
 
   return (
@@ -144,6 +178,7 @@ const TagDetail = () => {
       </h1>
       <p className="text-sm text-muted-foreground mb-8">
         {ac} {ac === 1 ? "article" : "articles"} · {qc} {qc === 1 ? "quote" : "quotes"}
+        {tc > 0 && ` · ${tc} ${tc === 1 ? "thread" : "threads"}`}
       </p>
 
       <div className="flex gap-2 mb-8">
@@ -180,6 +215,17 @@ const TagDetail = () => {
                   onTitleEdit={handleTitleEdit}
                 />
               </Link>
+            );
+          }
+          if (item.type === "thread") {
+            return (
+              <ThreadCard
+                key={`t-${item.data.id}`}
+                session={item.data}
+                fullWidth
+                onDelete={handleDeleteThread}
+                onUnbookmark={handleUnbookmarkThread}
+              />
             );
           }
           const quote = item.data;

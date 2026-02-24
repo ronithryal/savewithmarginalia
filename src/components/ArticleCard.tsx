@@ -61,7 +61,7 @@ const DeleteButton = ({ onDelete, id }: { onDelete: (id: string) => void; id: st
   </button>
 );
 
-const AiExplainButton = ({ url }: { url: string }) => {
+const AiExplainButton = ({ url, articleId }: { url: string; articleId: string }) => {
   const navigate = useNavigate();
   return (
     <Tooltip>
@@ -70,7 +70,7 @@ const AiExplainButton = ({ url }: { url: string }) => {
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            navigate("/chat", { state: { initialMessage: `Explain this: ${url}` } });
+            navigate("/chat", { state: { initialMessage: `Explain this: ${url}`, sourceArticleId: articleId } });
           }}
           className="absolute top-2 right-10 bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-accent transition-colors p-1.5 rounded-md opacity-0 group-hover:opacity-100 text-[10px] font-bold leading-none"
           aria-label="Explain this article with AI"
@@ -229,7 +229,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
           </a>
         </div>
 
-        <AiExplainButton url={article.url} />
+        <AiExplainButton url={article.url} articleId={article.id} />
         {onDelete && <DeleteButton onDelete={onDelete} id={article.id} />}
       </div>
     );
@@ -270,7 +270,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
           </a>
         </div>
 
-        <AiExplainButton url={article.url} />
+        <AiExplainButton url={article.url} articleId={article.id} />
         {onDelete && <DeleteButton onDelete={onDelete} id={article.id} />}
       </div>
     );
@@ -327,7 +327,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
         </div>
       </div>
 
-      <AiExplainButton url={article.url} />
+      <AiExplainButton url={article.url} articleId={article.id} />
       {onDelete && <DeleteButton onDelete={onDelete} id={article.id} />}
     </div>
   );

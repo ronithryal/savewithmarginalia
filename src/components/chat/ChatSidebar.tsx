@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { SquarePen, Trash2 } from "lucide-react";
+import { SquarePen, Trash2, Bookmark } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatSession } from "@/pages/Chat";
 
 function relativeTime(dateStr: string): string {
@@ -25,6 +26,105 @@ interface Props {
   onNewChat: () => void;
   onSelectSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
+  onBookmarkSession: (id: string, bookmarked: boolean) => void;
+}
+
+function SessionRow({
+  session,
+  isActive,
+  onSelect,
+  onDelete,
+  onBookmark,
+}: {
+  session: ChatSession;
+  isActive: boolean;
+  onSelect: () => void;
+  onDelete: () => void;
+  onBookmark: () => void;
+}) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  return (
+    <div
+      className={`group flex items-center gap-2 px-4 py-2.5 cursor-pointer transition-colors ${
+        isActive ? "bg-secondary" : "hover:bg-secondary/50"
+      }`}
+      onClick={onSelect}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          {session.is_bookmarked && (
+            <Bookmark className="h-3 w-3 text-accent fill-accent flex-shrink-0" />
+          )}
+          <p className="text-sm text-foreground truncate">
+            {session.title || "Untitled"}
+          </p>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          {relativeTime(session.updated_at)}
+        </p>
+      </div>
+      {confirmDelete ? (
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-destructive hover:text-destructive"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+              setConfirmDelete(false);
+            }}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmDelete(false);
+            }}
+          >
+            ✕
+          </Button>
+        </div>
+      ) : (
+        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-6 w-6 ${session.is_bookmarked ? "text-accent opacity-100" : "text-muted-foreground hover:text-accent"}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onBookmark();
+                }}
+              >
+                <Bookmark className={`h-3 w-3 ${session.is_bookmarked ? "fill-current" : ""}`} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              {session.is_bookmarked ? "Remove bookmark" : "Bookmark thread"}
+            </TooltipContent>
+          </Tooltip>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-destructive"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmDelete(true);
+            }}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ChatSidebar({
@@ -33,8 +133,10 @@ export function ChatSidebar({
   onNewChat,
   onSelectSession,
   onDeleteSession,
+  onBookmarkSession,
 }: Props) {
-  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const bookmarked = sessions.filter((s) => s.is_bookmarked);
+  const regular = sessions.filter((s) => !s.is_bookmarked);
 
   return (
     <div className="flex flex-col h-full">
@@ -60,65 +162,42 @@ export function ChatSidebar({
           </p>
         ) : (
           <div className="py-1">
-            {sessions.map((s) => (
-              <div
-                key={s.id}
-                className={`group flex items-center gap-2 px-4 py-2.5 cursor-pointer transition-colors ${
-                  s.id === activeSessionId
-                    ? "bg-secondary"
-                    : "hover:bg-secondary/50"
-                }`}
-                onClick={() => onSelectSession(s.id)}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-foreground truncate">
-                    {s.title || "Untitled"}
+            {bookmarked.length > 0 && (
+              <>
+                <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Bookmarked
+                </p>
+                {bookmarked.map((s) => (
+                  <SessionRow
+                    key={s.id}
+                    session={s}
+                    isActive={s.id === activeSessionId}
+                    onSelect={() => onSelectSession(s.id)}
+                    onDelete={() => onDeleteSession(s.id)}
+                    onBookmark={() => onBookmarkSession(s.id, false)}
+                  />
+                ))}
+              </>
+            )}
+            {regular.length > 0 && (
+              <>
+                {bookmarked.length > 0 && (
+                  <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Recent
                   </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {relativeTime(s.updated_at)}
-                  </p>
-                </div>
-                {confirmId === s.id ? (
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-destructive hover:text-destructive"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteSession(s.id);
-                        setConfirmId(null);
-                      }}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-muted-foreground"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setConfirmId(null);
-                      }}
-                    >
-                      ✕
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setConfirmId(s.id);
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
                 )}
-              </div>
-            ))}
+                {regular.map((s) => (
+                  <SessionRow
+                    key={s.id}
+                    session={s}
+                    isActive={s.id === activeSessionId}
+                    onSelect={() => onSelectSession(s.id)}
+                    onDelete={() => onDeleteSession(s.id)}
+                    onBookmark={() => onBookmarkSession(s.id, true)}
+                  />
+                ))}
+              </>
+            )}
           </div>
         )}
       </ScrollArea>
