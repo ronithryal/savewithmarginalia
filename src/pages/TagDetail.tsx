@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { useParams, Link, useSearchParams } from "react-router-dom";
+import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import ArticleCard from "@/components/ArticleCard";
 import QuoteCard from "@/components/QuoteCard";
 import ThreadCard from "@/components/ThreadCard";
@@ -15,10 +15,17 @@ const TagDetail = () => {
   const tagName = decodeURIComponent(slug || "");
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialFilter = (searchParams.get("filter") as Filter) || "all";
   const [filter, setFilter] = useState<Filter>(initialFilter);
 
+  // ── New Thread inline form state ──
+  const [showNewThread, setShowNewThread] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  // ── Tag lookup ──
   const { data: tag } = useQuery({
     queryKey: ["tag-by-name", tagName],
     queryFn: async () => {
@@ -33,6 +40,7 @@ const TagDetail = () => {
     enabled: !!user && !!tagName,
   });
 
+  // ── Articles ──
   const { data: articles } = useQuery({
     queryKey: ["tag-articles", tag?.id],
     queryFn: async () => {
@@ -53,6 +61,7 @@ const TagDetail = () => {
     enabled: !!tag,
   });
 
+  // ── Quotes ──
   const { data: quotes } = useQuery({
     queryKey: ["tag-quotes", tag?.id],
     queryFn: async () => {
@@ -88,24 +97,23 @@ const TagDetail = () => {
     enabled: !!tag,
   });
 
+  // ── Threads (real threads table) ──
   const { data: threads } = useQuery({
     queryKey: ["tag-threads", tag?.id],
     queryFn: async () => {
-      const { data: sessionTags } = await supabase
-        .from("chat_session_tags" as any)
-        .select("session_id")
-        .eq("tag_id", tag!.id);
-      if (!sessionTags || sessionTags.length === 0) return [];
-      const sessionIds = (sessionTags as any[]).map((r) => r.session_id);
-      const { data: sessions } = await supabase
-        .from("chat_sessions" as any)
-        .select("*")
-        .in("id", sessionIds)
-        .eq("is_bookmarked", true)
-        .order("updated_at", { ascending: false });
-      return (sessions as any[]) ?? [];
+      const { data, error } = await (supabase as any)
+        .from("threads")
+        .select("*, thread_items(id)")
+        .eq("user_id", user!.id)
+        .eq("tag_id", tag!.id)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []).map((t: any) => ({
+        ...t,
+        item_count: Array.isArray(t.thread_items) ? t.thread_items.length : 0,
+      }));
     },
-    enabled: !!tag,
+    enabled: !!tag && !!user,
   });
 
   const ac = articles?.length ?? 0;
@@ -125,10 +133,11 @@ const TagDetail = () => {
     (quotes ?? []).forEach((q) => feed.push({ type: "quote", created_at: q.created_at, data: q }));
   }
   if (filter === "all" || filter === "threads") {
-    (threads ?? []).forEach((t) => feed.push({ type: "thread", created_at: (t as any).updated_at, data: t }));
+    (threads ?? []).forEach((t) => feed.push({ type: "thread", created_at: t.created_at, data: t }));
   }
   feed.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
+  // ── Handlers ──
   const handleDeleteArticle = async (id: string) => {
     await supabase.from("articles").delete().eq("id", id);
     queryClient.invalidateQueries({ queryKey: ["tag-articles", tag?.id] });
@@ -150,13 +159,28 @@ const TagDetail = () => {
   };
 
   const handleDeleteThread = async (id: string) => {
-    await supabase.from("chat_sessions" as any).delete().eq("id", id);
+    await (supabase as any).from("threads").delete().eq("id", id);
     queryClient.invalidateQueries({ queryKey: ["tag-threads", tag?.id] });
   };
 
-  const handleUnbookmarkThread = async (id: string) => {
-    await supabase.from("chat_sessions" as any).update({ is_bookmarked: false }).eq("id", id);
-    queryClient.invalidateQueries({ queryKey: ["tag-threads", tag?.id] });
+  // ── Create new thread ──
+  const handleCreateThread = async () => {
+    if (!tag || !user || !newTitle.trim()) return;
+    setCreating(true);
+    const { data, error } = await (supabase as any)
+      .from("threads")
+      .insert({
+        user_id: user.id,
+        tag_id: tag.id,
+        title: newTitle.trim(),
+        description: "",
+      })
+      .select("id")
+      .single();
+    setCreating(false);
+    if (!error && data?.id) {
+      navigate(`/threads/${data.id}`);
+    }
   };
 
   const pills: { label: string; value: Filter }[] = [
@@ -165,6 +189,8 @@ const TagDetail = () => {
     { label: "Quotes", value: "quotes" },
     { label: "Threads", value: "threads" },
   ];
+
+  const showThreadUi = filter === "threads" || filter === "all";
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-16 animate-fade-in">
@@ -183,23 +209,69 @@ const TagDetail = () => {
         {tc > 0 && ` · ${tc} ${tc === 1 ? "thread" : "threads"}`}
       </p>
 
-      <div className="flex gap-2 mb-8">
+      {/* Filter pills + New Thread button */}
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
         {pills.map((p) => (
           <button
             key={p.value}
-            onClick={() => setFilter(p.value)}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              filter === p.value
+            onClick={() => { setFilter(p.value); setShowNewThread(false); }}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === p.value
                 ? "bg-primary text-primary-foreground"
                 : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
-            }`}
+              }`}
           >
             {p.label}
           </button>
         ))}
+
+        {showThreadUi && (
+          <button
+            onClick={() => setShowNewThread((v) => !v)}
+            className="ml-auto inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="h-3 w-3" />
+            New Thread
+          </button>
+        )}
       </div>
 
-      {feed.length === 0 && (
+      {/* Inline new-thread form */}
+      {showNewThread && (
+        <div className="mb-6 p-4 bg-[hsl(var(--article-card))] border border-[hsl(var(--article-card-border))] rounded-lg flex items-center gap-3">
+          <input
+            type="text"
+            placeholder="Thread title…"
+            value={newTitle}
+            autoFocus
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleCreateThread()}
+            className="flex-1 px-3 py-2 text-sm bg-muted rounded-md border border-border outline-none focus:ring-1 focus:ring-accent"
+          />
+          <button
+            onClick={handleCreateThread}
+            disabled={!newTitle.trim() || creating}
+            className="px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors flex-shrink-0"
+          >
+            {creating ? "Creating…" : "Create"}
+          </button>
+        </div>
+      )}
+
+      {/* Empty state for threads-only view */}
+      {filter === "threads" && tc === 0 && !showNewThread && (
+        <p className="text-muted-foreground text-sm py-12 text-center">
+          No threads yet for #{tagName}.{" "}
+          <button
+            onClick={() => setShowNewThread(true)}
+            className="text-accent hover:underline"
+          >
+            Create one →
+          </button>
+        </p>
+      )}
+
+      {/* General empty state */}
+      {feed.length === 0 && filter !== "threads" && (
         <p className="text-muted-foreground text-sm py-12 text-center">
           Nothing saved under #{tagName} yet.
         </p>
@@ -219,17 +291,26 @@ const TagDetail = () => {
               </Link>
             );
           }
+
           if (item.type === "thread") {
+            const t = item.data;
             return (
               <ThreadCard
-                key={`t-${item.data.id}`}
-                session={item.data}
+                key={`t-${t.id}`}
+                id={t.id}
+                title={t.title}
+                description={t.description}
+                itemCount={t.item_count}
+                tagName={tagName}
+                tagSlug={slug}
+                createdAt={t.created_at}
                 fullWidth
+                onClick={() => navigate(`/threads/${t.id}`)}
                 onDelete={handleDeleteThread}
-                onUnbookmark={handleUnbookmarkThread}
               />
             );
           }
+
           const quote = item.data;
           const article = (quote as any).articles;
           return (
