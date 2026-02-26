@@ -1,0 +1,14 @@
+Feb 26 - AI Conversations Now Organized by Tag
+
+Just shipped a quiet but meaningful update to Marginalia.
+
+When you hit the AI button on any saved article or quote, it starts a conversation — and now that conversation automatically gets tagged alongside the content that sparked it.
+
+So if you're deep into a #product-thinking rabbit hole and ask Marginalia to explain something, that conversation shows up right there under #product-thinking when you browse your tags. No filing. No organizing. It just follows the thread.
+
+Threads aren't a new thing you create. They emerge from the reading you're already doing.
+
+This is what a personal knowledge tool should feel like.
+
+— Marginalia
+savewithmarginalia.app

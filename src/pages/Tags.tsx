@@ -94,14 +94,13 @@ const Tags = () => {
   const { data: threadTagCounts } = useQuery({
     queryKey: ["thread-tag-counts"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("threads")
-        .select("tag_id")
-        .eq("user_id", user!.id);
+      const { data, error } = await supabase
+        .from("chat_session_tags" as any)
+        .select("tag_id, session_id");
       if (error) throw error;
       const counts: Record<string, number> = {};
       (data as any[]).forEach((row) => {
-        if (row.tag_id) counts[row.tag_id] = (counts[row.tag_id] || 0) + 1;
+        counts[row.tag_id] = (counts[row.tag_id] || 0) + 1;
       });
       return counts;
     },
