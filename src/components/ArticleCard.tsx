@@ -12,6 +12,9 @@ interface ArticleCardProps {
     created_at: string;
     preview_image_url: string | null;
     content_text: string | null;
+    og_image?: string | null;
+    og_description?: string | null;
+    reading_time_minutes?: number | null;
   };
   fullWidth?: boolean;
   onDelete?: (id: string) => void;
@@ -154,8 +157,11 @@ function EditableTitle({
 const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: ArticleCardProps) => {
   const isTwitter = isTwitterUrl(article.url);
   const isLinkedIn = isLinkedInUrl(article.url);
-  const description = article.content_text || "";
+  // Prefer dedicated og_description column; fall back to content_text
+  const description = article.og_description || article.content_text || "";
+  const thumbnailUrl = article.og_image || article.preview_image_url || null;
   const formattedDate = format(new Date(article.created_at), "MMMM d, yyyy");
+  const readingTime = article.reading_time_minutes ?? null;
 
   const displayTitle = () => {
     if (!article.title || article.title === article.url || article.title.trim() === "") {
@@ -210,11 +216,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
               />
             </div>
           </div>
-        ) : (
-          <div className="mx-4 mb-3 rounded-md flex items-center justify-center" style={{ backgroundColor: "#F3F4F6", height: 48 }}>
-            <span style={{ fontSize: 11, color: "#9CA3AF" }}>Media not loaded · Save via extension for full preview</span>
-          </div>
-        )}
+        ) : null}
 
         <div className="flex items-center justify-between px-4 pb-3">
           <span className="text-xs text-muted-foreground">{formattedDate}</span>
@@ -279,10 +281,10 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
   // ─── Standard article card ───
   return (
     <div className={`group relative bg-[hsl(var(--article-card))] border border-[hsl(var(--article-card-border))] rounded-lg overflow-hidden ${fullWidth ? "max-w-[680px] mx-auto" : ""}`}>
-      {article.preview_image_url && (
+      {thumbnailUrl && (
         <div className="w-full aspect-video overflow-hidden bg-muted">
           <img
-            src={article.preview_image_url}
+            src={thumbnailUrl}
             alt=""
             className="w-full h-full object-cover"
             loading="lazy"
@@ -313,6 +315,9 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
             <span className="text-xs">{article.source_domain}</span>
           </div>
           <div className="flex items-center gap-3">
+            {readingTime && (
+              <span className="text-xs text-muted-foreground">~{readingTime} min</span>
+            )}
             <span className="text-xs text-muted-foreground">{formattedDate}</span>
             <a
               href={article.url}

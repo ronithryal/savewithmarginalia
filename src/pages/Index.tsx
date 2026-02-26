@@ -139,9 +139,13 @@ const Index = () => {
       }).select().single();
       if (error) throw error;
 
-      supabase.functions.invoke("parse-article", {
+      const parsePromise = supabase.functions.invoke("parse-article", {
         body: { article_id: data.id },
-      }).then(() => {
+      });
+      const metaPromise = supabase.functions.invoke("fetch-metadata", {
+        body: { article_id: data.id },
+      });
+      Promise.allSettled([parsePromise, metaPromise]).then(() => {
         queryClient.invalidateQueries({ queryKey: ["article", data.id] });
         queryClient.invalidateQueries({ queryKey: ["articles"] });
       }).catch(console.error);
