@@ -54,7 +54,7 @@ function parseTwitterTitle(title: string): { name: string; handle: string | null
 const DeleteButton = ({ onDelete, id }: { onDelete: (id: string) => void; id: string }) => (
   <button
     onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(id); }}
-    className="absolute top-2 right-2 bg-foreground/80 backdrop-blur-sm text-background hover:text-destructive transition-colors p-1.5 rounded-md opacity-0 group-hover:opacity-100"
+    className="absolute top-2 right-2 bg-foreground/80 backdrop-blur-sm text-background hover:text-destructive transition-colors p-1.5 rounded-md sm:opacity-0 sm:group-hover:opacity-100"
     aria-label="Delete article"
   >
     <Trash2 className="h-3.5 w-3.5" />
@@ -72,7 +72,7 @@ const AiExplainButton = ({ url, articleId }: { url: string; articleId: string })
             e.stopPropagation();
             navigate("/chat", { state: { initialMessage: `Explain this: ${url}`, sourceArticleId: articleId } });
           }}
-          className="absolute top-2 right-10 bg-foreground/80 backdrop-blur-sm text-background hover:text-accent transition-colors p-1.5 rounded-md opacity-0 group-hover:opacity-100 text-[10px] font-bold leading-none"
+          className="absolute top-2 right-10 bg-foreground/80 backdrop-blur-sm text-background hover:text-accent transition-colors p-1.5 rounded-md sm:opacity-0 sm:group-hover:opacity-100 text-[10px] font-bold leading-none"
           aria-label="Explain this article with AI"
         >
           AI
@@ -142,7 +142,7 @@ function EditableTitle({
       <span className={className}>{title}</span>
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditing(true); }}
-        className="text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100 group-hover/title:opacity-100 flex-shrink-0"
+        className="text-muted-foreground hover:text-foreground transition-colors sm:opacity-0 sm:group-hover:opacity-100 sm:group-hover/title:opacity-100 flex-shrink-0"
         aria-label="Edit title"
       >
         <Pencil className="h-3 w-3" />
