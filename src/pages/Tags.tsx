@@ -94,24 +94,14 @@ const Tags = () => {
   const { data: threadTagCounts } = useQuery({
     queryKey: ["thread-tag-counts"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("chat_session_tags" as any)
-        .select("tag_id, session_id");
+      const { data, error } = await (supabase as any)
+        .from("threads")
+        .select("tag_id")
+        .eq("user_id", user!.id);
       if (error) throw error;
-      // Only count bookmarked sessions
-      const sessionIds = [...new Set((data as any[]).map((r) => r.session_id))];
-      if (sessionIds.length === 0) return {};
-      const { data: sessions } = await supabase
-        .from("chat_sessions" as any)
-        .select("id")
-        .in("id", sessionIds)
-        .eq("is_bookmarked", true);
-      const bookmarkedIds = new Set((sessions as any[] ?? []).map((s) => s.id));
       const counts: Record<string, number> = {};
       (data as any[]).forEach((row) => {
-        if (bookmarkedIds.has(row.session_id)) {
-          counts[row.tag_id] = (counts[row.tag_id] || 0) + 1;
-        }
+        if (row.tag_id) counts[row.tag_id] = (counts[row.tag_id] || 0) + 1;
       });
       return counts;
     },
