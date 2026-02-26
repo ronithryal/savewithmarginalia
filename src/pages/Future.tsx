@@ -1,4 +1,5 @@
 import { Globe, BrainCircuit, Newspaper, BarChart2, Sparkles, Users, Search } from "lucide-react";
+import { motion } from "framer-motion";
 
 const sections = [
   {
@@ -45,28 +46,44 @@ const sections = [
   },
 ];
 
+const fadeUp = {
+  hidden: { opacity: 0, y: 24 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0, 0, 0.2, 1] as const } },
+};
+
 const Future = () => {
   return (
     <div className="max-w-4xl mx-auto px-6 py-16">
       {/* Header */}
-      <p className="text-xs tracking-widest text-muted-foreground uppercase mb-4">
-        WHAT'S NEXT
-      </p>
-      <h1 className="text-4xl font-bold tracking-tight text-foreground mb-4">
-        The library that grows with you.
-      </h1>
-      <p className="text-base text-muted-foreground leading-relaxed max-w-2xl mb-12">
-        Marginalia today captures what you read and helps you think with it.
-        Everything below is where it goes next — turning your reading habit into
-        compounding intellectual capital.
-      </p>
+      <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-50px" }} variants={fadeUp}>
+        <p className="text-xs tracking-widest text-muted-foreground uppercase mb-4">
+          WHAT'S NEXT
+        </p>
+        <h1 className="text-4xl font-bold tracking-tight text-foreground mb-4">
+          The library that grows with you.
+        </h1>
+        <p className="text-base text-muted-foreground leading-relaxed max-w-2xl mb-12">
+          Marginalia today captures what you read and helps you think with it.
+          Everything below is where it goes next — turning your reading habit into
+          compounding intellectual capital.
+        </p>
+      </motion.div>
 
       <div className="border-t border-border" />
 
       {/* Feature sections */}
-      {sections.map((section) => (
+      {sections.map((section, i) => (
         <div key={section.label}>
-          <div className="flex flex-col sm:flex-row gap-8 py-12">
+          <motion.div
+            className="flex flex-col sm:flex-row gap-8 py-12"
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-50px" }}
+            variants={{
+              hidden: { opacity: 0, y: 24 },
+              visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0, 0, 0.2, 1] as const, delay: 0.05 } },
+            }}
+          >
             <section.icon
               className="text-muted-foreground flex-shrink-0"
               size={48}
@@ -83,13 +100,19 @@ const Future = () => {
                 {section.body}
               </p>
             </div>
-          </div>
+          </motion.div>
           <div className="border-t border-border" />
         </div>
       ))}
 
       {/* Closing block */}
-      <div className="pt-16 pb-12">
+      <motion.div
+        className="pt-16 pb-12"
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, margin: "-50px" }}
+        variants={fadeUp}
+      >
         <p className="text-xs tracking-widest text-muted-foreground uppercase mb-4">
           THE THESIS
         </p>
@@ -97,7 +120,7 @@ const Future = () => {
           "The user who reads with Marginalia doesn't just have more saved.
           They know more — thoroughly, connectedly, and over time."
         </blockquote>
-      </div>
+      </motion.div>
     </div>
   );
 };
