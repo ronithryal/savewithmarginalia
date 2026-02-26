@@ -54,7 +54,7 @@ function parseTwitterTitle(title: string): { name: string; handle: string | null
 const DeleteButton = ({ onDelete, id }: { onDelete: (id: string) => void; id: string }) => (
   <button
     onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(id); }}
-    className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-destructive transition-colors p-1.5 rounded-md opacity-0 group-hover:opacity-100"
+    className="absolute top-2 right-2 bg-foreground/80 backdrop-blur-sm text-background hover:text-destructive transition-colors p-1.5 rounded-md opacity-0 group-hover:opacity-100"
     aria-label="Delete article"
   >
     <Trash2 className="h-3.5 w-3.5" />
@@ -72,7 +72,7 @@ const AiExplainButton = ({ url, articleId }: { url: string; articleId: string })
             e.stopPropagation();
             navigate("/chat", { state: { initialMessage: `Explain this: ${url}`, sourceArticleId: articleId } });
           }}
-          className="absolute top-2 right-10 bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-accent transition-colors p-1.5 rounded-md opacity-0 group-hover:opacity-100 text-[10px] font-bold leading-none"
+          className="absolute top-2 right-10 bg-foreground/80 backdrop-blur-sm text-background hover:text-accent transition-colors p-1.5 rounded-md opacity-0 group-hover:opacity-100 text-[10px] font-bold leading-none"
           aria-label="Explain this article with AI"
         >
           AI
