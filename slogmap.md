@@ -1,0 +1,115 @@
+# Slogmap — 4–5 Hour Sprint
+*Current time: 12:12 AM. Target: done by ~5 AM.*
+*AGENTS.md and ROADMAP.md unchanged — this file drives tonight only.*
+
+---
+
+## What we're skipping entirely tonight
+- All Phase 4.5 infra (domain, Cloudflare, Sentry, PostHog, Redis) — zero product value for a solo sprint
+- LinkedIn import — deferred by design
+- Weekly email digest (needs Resend account setup, not code-bound)
+- Phase 8 UX polish — nice-to-have, not tonight
+- Phase 9 social/sharing — needs users first
+- Phase 9.5 ambient capture — roadmap only
+- Phase 10 mobile / 10.5 PDF / 11 monetization — weeks away
+
+---
+
+## The Sprint (in order)
+
+### ① Google OAuth — *15 min* ✅ easy
+> Supabase Dashboard → Auth → Providers → Google → paste client ID + secret.
+> Zero code. Ship it first, unlocks cleaner onboarding for every feature after.
+
+---
+
+### ② X Bookmarks Import — *~1 hr*
+**What to build:**
+- `supabase/functions/x-import/index.ts` — OAuth 2.0 PKCE, calls `GET /2/users/:id/bookmarks`, runs through existing `fetch-metadata → suggest-tags → insert article` pipeline
+- Settings UI card: "Connect X" button, stored access token in `user_preferences`
+- Supabase cron every 15 min
+
+**Skip:** source badges for now — adds noise without adding articles. Come back to badges in 1 pass after all imports work.
+
+---
+
+### ③ Sonar "Find More Like This" — *~1 hr*
+**What to build:**
+- Perplexity Sonar API call in a new edge function `supabase/functions/sonar-discover`
+- Input: user's tag name + last 5 saved article titles → Sonar search → return 3–5 URLs
+- Surface as a "Find more →" button on `/tags/:slug` tag pages, shows results in a modal or bottom strip
+- Store Sonar API key in Supabase secrets
+
+**Skip:** tag-weighted RSS ranking and "Trending by topic" — lower signal-to-effort ratio tonight.
+
+---
+
+### ④ pgvector RAG Upgrade — *~1.5 hr*
+**What to build:**
+- Supabase migration: enable pgvector, create `content_embeddings(id, user_id, content_type, content_id, embedding vector(1536))`
+- On article/quote insert: call OpenAI `text-embedding-3-small` → store embedding (can be a background trigger or inline in save flow)
+- Upgrade `/chat` edge function: embed query → cosine similarity → inject top-N as RAG context → Gemini Flash responds with citations
+
+**This is the one that makes everything else more valuable.** Do it even if tired.
+
+---
+
+### ⑤ NotebookLM Export Button — *~30 min*
+**What to build:**
+- On `/tags/:slug`, add "Export →" button in the tag header
+- Collects all articles + quotes under the tag, formats as structured markdown, copies to clipboard
+- Toast: "Copied — paste into NotebookLM as a new source" + opens notebooklm.google.com in new tab
+
+**Quickest thing with the clearest demo value.** Do this last because it's easy and satisfying.
+
+---
+
+### ⑥ MCP Server Skeleton — *~1 hr* (only if time permits)
+**What to build:**
+- A minimal Deno-based MCP server at `supabase/functions/mcp/index.ts`
+- Tools: `listTags`, `listArticlesByTag`, `listQuotesByTag`
+- Auth: user API key (stored in `user_preferences`, validated in edge function)
+- Do NOT build the full key-management UI tonight — just hardcode a test key in Supabase secrets and verify Claude can call it
+
+**If it's 4 AM and you're tired, skip this and sleep.** The RAG upgrade (④) is more foundational.
+
+---
+
+---
+
+### ⑦ Phase 8 — Core UX Polish — *~1 hr*
+- Inline quote highlighting in `/articles/:id` — select text → "Save Quote" toolbar
+- AI auto-suggested quotes on article open (dismissible strip)
+- Share-native output via `navigator.share()` on QuoteCard/ArticleCard
+- Full sanitized HTML reader view with highlighted saved quotes
+
+---
+
+### ⑧ Phase 8.5 — Developer Platform & MCP — *~1 hr*
+- Scoped per-user API keys (read/write `articles`, `quotes`, `tags`, `chat_sessions`)
+- Event webhooks: on new article / quote / tag
+- Marginalia MCP server: `listTags`, `listArticlesByTag`, `listQuotesByTag`, `getThreadBySessionId`
+- Minimal API docs + Node/Python example scripts
+
+---
+
+### ⑨ Weekly "What I Learned" Digest (from Phase 9.5) — *~45 min*
+- Supabase cron (Monday 8am) — collects past week's saves grouped by tag
+- Generates tag-organized summary via AI
+- **Resend** for email delivery (Marginalia-styled HTML template)
+- Output format compatible with NotebookLM export
+
+---
+
+### ⑩ Phase 10.5 — PDF + Google Workspace — *~1.5 hr*
+- `supabase/functions/process-pdf` — layout-aware text extraction, page coordinates
+- Reader view: PDF viewer + inline quote selection
+- Google Drive folder sync — OAuth, auto-process PDFs dropped in "Marginalia" folder
+- Gmail / Google Chat bridge *(stretch goal only)*
+
+---
+
+## Priority order if time runs out
+① Google OAuth → ③ Sonar → ④ RAG → ⑤ NotebookLM → ⑦ UX Polish → ⑧ MCP → ② X Import → ⑨ Digest → ⑩ PDF
+
+*(Core intelligence features first, platform + integrations after)*
