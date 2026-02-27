@@ -168,6 +168,18 @@ A running record of major architectural pivots and the reasoning behind them.
 
 ---
 
+### 2026-02-27 — The Grand Pivot: From Bookmarker to Executive Intelligence Engine
+
+Marginalia started as a personal article and quote keeper — my "better Pocket/Readwise" for cleaning up a chaotic reading habit. Over time, I realized the real value wasn't storage, it was context.
+
+As I built Threads, RAG search, and imports from X/LinkedIn, the product naturally shifted from "save everything" to "surface the few things that actually drive decisions" — especially for founders, PMs, and investors.
+
+Talking through the roadmap forced a bigger reframing: Marginalia isn't just a bookmarking tool, it's an executive context layer. The core job is to capture high-signal inputs (social, docs, PDFs), learn how the user thinks about them, and feed that into agents like Claude as structured, trustworthy context.
+
+That's when the vision clicked for me: this is essentially Cursor for product and strategy. Instead of only helping you write code, Marginalia helps you decide what to build, what to say, and how to explain it — then hands that intent to whatever coding or content agents you prefer.
+
+---
+
 ### 2026-02-25 — AI coding tool: Antigravity over Claude Code or Codex
 
 **What changed:** Decided to use Antigravity (Google DeepMind) as the primary AI coding assistant throughout this project instead of Claude Code or Codex.
