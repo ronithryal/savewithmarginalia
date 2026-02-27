@@ -1,6 +1,6 @@
 # Slogmap — 4–5 Hour Sprint
-*Current time: 12:12 AM. Target: done by ~5 AM.*
-*AGENTS.md and ROADMAP.md unchanged — this file drives tonight only.*
+*Current time: [Day 2]. Focus: AI, Inference, and Executive Context.*
+*AGENTS.md and ROADMAP.md unchanged — this file drives the immediate sprint.*
 
 ---
 
@@ -33,45 +33,52 @@
 
 ---
 
-### ③ Sonar "Find More Like This" — *~1 hr*
-**What to build:**
-- Perplexity Sonar API call in a new edge function `supabase/functions/sonar-discover`
-- Input: user's tag name + last 5 saved article titles → Sonar search → return 3–5 URLs
-- Surface as a "Find more →" button on `/tags/:slug` tag pages, shows results in a modal or bottom strip
-- Store Sonar API key in Supabase secrets
+### ③ Sonar Discovery Engine — *~1 hr* ✅
+**What we've done:**
+- Perplexity Sonar API call in edge function `supabase/functions/sonar-discover` ✅
+- **Discover Tab Expansion**: Refactor the "Trending" section in `Discover.tsx` to use the `sonar-discover` function ✅
 
-**Skip:** tag-weighted RSS ranking and "Trending by topic" — lower signal-to-effort ratio tonight.
+**Remaining work:**
+- **AI Insight Audit**: Review inputs/methodologies of the Sonar discovery engine.
+- Surface as a "Find more →" button on `/tags/:slug` tag pages as a direct trigger.
+- Modal to display results with "Why suggested" label.
 
----
-
-### ④ pgvector RAG Upgrade — *~1.5 hr*
-**What to build:**
-- Supabase migration: enable pgvector, create `content_embeddings(id, user_id, content_type, content_id, embedding vector(1536))`
-- On article/quote insert: call OpenAI `text-embedding-3-small` → store embedding (can be a background trigger or inline in save flow)
-- Upgrade `/chat` edge function: embed query → cosine similarity → inject top-N as RAG context → Gemini Flash responds with citations
-
-**This is the one that makes everything else more valuable.** Do it even if tired.
+**Skip:** tag-weighted RSS ranking and "Trending by topic" for now.
 
 ---
 
-### ⑤ NotebookLM Export Button — *~30 min*
-**What to build:**
-- On `/tags/:slug`, add "Export →" button in the tag header
-- Collects all articles + quotes under the tag, formats as structured markdown, copies to clipboard
-- Toast: "Copied — paste into NotebookLM as a new source" + opens notebooklm.google.com in new tab
+### ④ pgvector RAG Upgrade — *~1 hr* ✅
+**What we've done:**
+- `generate-embedding` (support for Webhooks) ✅ (Deployed)
+- **SQL Migration**: Trigger logic at `supabase/migrations/20260227100000_add_embedding_webhooks.sql` 🚀 (Needs Manual Run)
+- **Backfill Script**: Vectorizer at `/tmp/backfill_embeddings.ts` 🚀 (Needs Manual Run)
 
-**Quickest thing with the clearest demo value.** Do this last because it's easy and satisfying.
+**Remaining work:**
+- **RAG Chat**: Verify `/chat` logic (already supports pgvector via `match_content_embeddings`).
+
+**Memory-Ready**: Retrieval logic now supports multi-session context.
 
 ---
 
-### ⑥ MCP Server Skeleton — *~1 hr* (only if time permits)
+### ⑤ Strategic Brief Generator — *~1 hr*
 **What to build:**
-- A minimal Deno-based MCP server at `supabase/functions/mcp/index.ts`
-- Tools: `listTags`, `listArticlesByTag`, `listQuotesByTag`
-- Auth: user API key (stored in `user_preferences`, validated in edge function)
-- Do NOT build the full key-management UI tonight — just hardcode a test key in Supabase secrets and verify Claude can call it
+- **Brief Logic**: Create a mode in `/chat` or a new edge function that synthesizes saved content (from RAG) into a high-level "Strategic Brief".
+- **Synthesis**: Uses Claude 3.5 to group items by "Insight", "Risk", and "Action Item".
+- **Clipboard Export**: Copy formatted MD to clipboard (reusing the logic intended for NotebookLM, but for general executive use).
 
-**If it's 4 AM and you're tired, skip this and sleep.** The RAG upgrade (④) is more foundational.
+**High-leverage output**: This provides immediate value for founders and PMs regardless of their target tool.
+
+---
+
+### ⑥ MCP & Reasoning (Claude 3.5) — *~1.5 hr* ✅
+**What we've done:**
+- **Reasoning Function**: `supabase/functions/reasoning` using Claude 3.5 Sonnet ✅ (Deployed)
+- **Inference Layer**: Unified RAG spine used by both Chat and Reasoning functions.
+
+**Remaining work:**
+- **MCP Logic**: Implement `listTags`, `listArticlesByTag` in `supabase/functions/mcp/index.ts`.
+- **UI Trigger**: Add "Generate Strategic Brief" button to Tags and Library views.
+- **Executive Proxy Plan**: Design the "What would I do?" proxy logic — how we capture user judgment to store in Mem0 later.
 
 ---
 
@@ -110,7 +117,7 @@
 ---
 
 ## Priority order if time runs out
-① Google OAuth → ③ Sonar → ④ RAG → ⑤ NotebookLM → ⑦ UX Polish → ⑧ MCP → ② X Import → ⑨ Digest → ⑩ PDF
+① Google OAuth → ③ Sonar → ④ RAG → ⑤ Strategic Brief → ⑥ MCP/Reasoning → ⑦ Mem0 → ② X Import → ⑨ Digest → ⑩ PDF
 
 *(Core intelligence features first, platform + integrations after)*
 
@@ -126,6 +133,6 @@ Rules for all sprint work tonight. Every task must follow these.
 - **Preserve existing routes and nav.** Do not add new routes unless the task explicitly requires it.
 - **Do not introduce new npm/bun packages** without confirming compatibility with the Vite + Bun setup.
 - **Respect design system.** Use existing shadcn/ui components and Tailwind tokens — no new UI libraries.
-- **Sprint priority order:** ③ Sonar → ④ RAG → ⑤ NotebookLM → ⑦ UX Polish → ⑧ MCP → ② X Import → ⑨ Digest → ⑩ PDF. Do not start a lower-priority item if a higher-priority one is incomplete.
+- **Sprint priority order:** ③ Sonar → ④ RAG → ⑤ Strategic Brief → ⑥ MCP/Reasoning → ⑦ Mem0 → ② X Import → ⑨ Digest → ⑩ PDF. Do not start a lower-priority item if a higher-priority one is incomplete.
 - **Skip entirely tonight:** domain purchase, Cloudflare, PostHog, Sentry, Upstash, LinkedIn import, Phase 9 social/sharing, Phase 9.5 ambient capture (except weekly digest), Phase 10 mobile, Phase 11 monetization.
 

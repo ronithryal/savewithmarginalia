@@ -207,17 +207,11 @@ query a user's Marginalia library via MCP (Phase 8.5) with proper citations and 
 
 ---
 
-### Phase 7 — NotebookLM Integration + Email Digest
+### Phase 7 — Executive Email Digest
 
-NotebookLM is a bridge, not a competitor: Marginalia is the ingestion and structuring
-layer; NotebookLM is one of the destinations where users do deep synthesis. The export
-format established here also feeds the weekly digest and future MCP tool outputs.
-
-- "Export to NotebookLM" button on /tags/:slug — structured markdown formatter
-- Audio Overview callout after export
 - Weekly digest Supabase cron (Monday 8am user timezone)
 - **Resend** — transactional email for weekly digest (Marginalia-styled HTML template)
-- Digest format compatible with NotebookLM export and MCP tool responses
+- Digest format compatible with Strategic Briefs and MCP tool responses
 
 ---
 
@@ -265,7 +259,8 @@ Marginalia becomes a first-class tool for AI agents. Users can say:
 
 - Public profile page `/u/:username` — shared articles and threads (opt-in)
 - Share chat threads as read-only public links (`/threads/share/:token`)
-- Export tag to Markdown or Notion (extend the NotebookLM exporter)
+- **NotebookLM Export**: "Export to NotebookLM" button on /tags/:slug — structured markdown formatter
+- **Audio Overview**: Callout after export for NotebookLM's audio synthesis
 - Browser extension (beyond bookmarklet) — one-click save with tag suggestions in popup
 - **Migrate from Lovable → Vercel**: hosting, CI/CD, PR previews, edge config.
   Supabase stays as DB. Cloudflare stays in front for DNS/CDN.

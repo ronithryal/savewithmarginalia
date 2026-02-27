@@ -168,15 +168,15 @@ A running record of major architectural pivots and the reasoning behind them.
 
 ---
 
-### 2026-02-27 — The Grand Pivot: From Bookmarker to Executive Intelligence Engine
+### 2026-02-24 — Firebase → Supabase
 
-Marginalia started as a personal article and quote keeper — my "better Pocket/Readwise" for cleaning up a chaotic reading habit. Over time, I realized the real value wasn't storage, it was context.
+**What changed:** Replaced Firebase (Auth + Firestore + Cloud Functions) with Supabase (PostgreSQL + RLS + Edge Functions / Deno).
 
-As I built Threads, RAG search, and imports from X/LinkedIn, the product naturally shifted from "save everything" to "surface the few things that actually drive decisions" — especially for founders, PMs, and investors.
+**Why:** Firebase's document model (Firestore) doesn't handle relational queries well — filtering articles by tag, joining tags to chat sessions, doing vector similarity search — all of these require SQL. The original Firebase plan would have required either denormalized duplicate data or client-side joining, both of which compound as the data model grows. Supabase is Postgres, so the schema can evolve properly.
 
-Talking through the roadmap forced a bigger reframing: Marginalia isn't just a bookmarking tool, it's an executive context layer. The core job is to capture high-signal inputs (social, docs, PDFs), learn how the user thinks about them, and feed that into agents like Claude as structured, trustworthy context.
+**The other factor:** pgvector. The Phase 6 RAG stack requires a vector store. pgvector lives inside the same Postgres instance, which means the same RLS policies, same connection, same query interface. Firebase's equivalent would have been Pinecone or a separate managed service with its own auth and latency. One less integration is meaningful when building solo.
 
-That's when the vision clicked for me: this is essentially Cursor for product and strategy. Instead of only helping you write code, Marginalia helps you decide what to build, what to say, and how to explain it — then hands that intent to whatever coding or content agents you prefer.
+**What Firebase did well:** Real-time listeners with minimal setup. Supabase has real-time too, but Firebase's SDKs are more ergonomic for it. For a read-heavy personal app with no collaborative real-time requirements, this wasn't worth the relational tradeoffs.
 
 ---
 
@@ -196,6 +196,42 @@ The third factor is task granularity. Antigravity breaks work into discrete, lab
 
 ---
 
+### 2026-02-26 — Threads as a standalone feature → Threads as `chat_session_tags`
+
+**What changed:** Initial Threads implementation used a separate `threads` table with `thread_items`. Rewired to `chat_sessions` + `chat_session_tags` — Threads are now AI conversations scoped to a tag, not a separate data type.
+
+**Why:** The original model treated Threads as a manual curation tool — users explicitly create threads and add articles to them. This created a second organizational system alongside Tags, which fragments the UI and the data model. The rewired model collapses this: every AI conversation is a Thread, and it inherits tags automatically from the source article or quote. No manual curation required.
+
+**The downstream benefit:** Phase 8.5 (MCP server) can expose `getThreadBySessionId` and `listThreadsByTag` without any additional schema. External agents (Claude, GPT) can query a user's AI conversations organized by topic because the data is already structured that way. Building it right at Phase 3 means zero rework at Phase 8.5.
+
+**What we lost:** The commit history shows three attempts before settling on this model (`feat: implement Threads` → `fix: wire threads to real threads table` → `refactor: simplify tag count query`). The initial implementation was technically functional but conceptually wrong. Shipping the wrong model early and refactoring costs less than getting it right before shipping at all — but only barely.
+
+---
+
+### 2026-02-26 — Slogmap and Ruthless Scope Reduction
+
+**What changed:** Defined a rigid 4-5 hour solo sprint ("slogmap") that explicitly dropped all infrastructure, mobile apps, and social features to focus 100% on core intelligence (RAG, Sonar, NotebookLM export).
+
+**Why:** A solo developer has limited weekend/night hours. The trap is spending 3 hours wrestling with DNS, Cloudflare, and Redis caching before the core product loop even works.
+
+**The decision:** Defer *everything* that doesn't immediately unlock intelligence or distribution. Skip source badges in the UI, but ship Google OAuth right away because it removes onboarding friction for testing. Skip tag-weighted RSS ranking, but ship the pgvector embedded RAG upgrade even if tired, because "This is the one that makes everything else more valuable."
+
+**What it cost:** The app currently runs without a custom domain, without Sentry error tracking, and without rate limiting on webhooks. This is technical debt, intentionally acquired.
+
+---
+
+### 2026-02-27 — The Grand Pivot: From Bookmarker to Executive Intelligence Engine
+
+Marginalia started as a personal article and quote keeper — my "better Pocket/Readwise" for cleaning up a chaotic reading habit. Over time, I realized the real value wasn't storage, it was context.
+
+As I built Threads, RAG search, and imports from X/LinkedIn, the product naturally shifted from "save everything" to "surface the few things that actually drive decisions" — especially for founders, PMs, and investors.
+
+Talking through the roadmap forced a bigger reframing: Marginalia isn't just a bookmarking tool, it's an executive context layer. The core job is to capture high-signal inputs (social, docs, PDFs), learn how the user thinks about them, and feed that into agents like Claude as structured, trustworthy context.
+
+That's when the vision clicked for me: this is essentially Cursor for product and strategy. Instead of only helping you write code, Marginalia helps you decide what to build, what to say, and how to explain it — then hands that intent to whatever coding or content agents you prefer.
+
+---
+
 ### 2026-02-27 — Adopting the "Claude Code OS" Workflow
 
 **What changed:** Re-aligned the AI orchestration model to adopt best practices from Boris Cherny (creator of Claude Code) into the Marginalia development process.
@@ -212,60 +248,19 @@ This meta-pivot treats the AI as a staff engineer partner rather than a junior d
 
 ---
 
-### 2026-02-26 — Slogmap and Ruthless Scope Reduction
+### 2026-02-27 — Infrastructure Deferral (Platform-First Deployment)
 
-**What changed:** Defined a rigid 4-5 hour solo sprint ("slogmap") that explicitly dropped all infrastructure, mobile apps, and social features to focus 100% on core intelligence (RAG, Sonar, NotebookLM export).
+**What changed:** Decided to stick with Lovable despite the edge function hurdle. Prompt-engineering the platform to "adopt" and deploy manually pushed code proved faster than a full Vercel migration, preserving development velocity.
 
-**Why:** A solo developer has limited weekend/night hours. The trap is spending 3 hours wrestling with DNS, Cloudflare, and Redis caching before the core product loop even works.
-
-**The decision:** Defer *everything* that doesn't immediately unlock intelligence or distribution. Skip source badges in the UI, but ship Google OAuth right away because it removes onboarding friction for testing. Skip tag-weighted RSS ranking, but ship the pgvector embedded RAG upgrade even if tired, because "This is the one that makes everything else more valuable."
-
-**What it cost:** The app currently runs without a custom domain, without Sentry error tracking, and without rate limiting on webhooks. This is technical debt, intentionally acquired.
+**Why:** For a solo developer, time is the scarcest resource. Trading money (Lovable credits) for infra-management hours is an efficient trade at this stage. The realization that platforms can be manipulated into adopting external code allows for "open-infra" capabilities while staying in the "walled garden" of managed services.
 
 ---
 
-### 2026-02-24 — Firebase → Supabase
+### 2026-02-27 — Strategic Pivot: Enterprise Focus over Curation
 
-**What changed:** Replaced Firebase (Auth + Firestore + Cloud Functions) with Supabase (PostgreSQL + RLS + Edge Functions / Deno).
+**What changed:** Deprioritized NotebookLM integration, moving it from a core Phase 7 item to a secondary Phase 9 (Social/Sharing) feature. Realigned the immediate sprint focus to "Executive Intelligence" (Strategic Briefs, Claude 3.5 reasoning, and Mem0 memory).
 
-**Why:** Firebase's document model (Firestore) doesn't handle relational queries well — filtering articles by tag, joining tags to chat sessions, doing vector similarity search — all of these require SQL. The original Firebase plan would have required either denormalized duplicate data or client-side joining, both of which compound as the data model grows. Supabase is Postgres, so the schema can evolve properly.
+**Why:** Marginalia's real power is as an executive intelligence engine, not just a curation tool. NotebookLM is an excellent synthesis destination, but building high-fidelity exports for it is "expensive" in terms of development time relative to its current value. By focusing on internal inference (Claude) and memory (Mem0), Marginalia provides more direct value to founders and PMs who need to decide "what to build next" rather than just "how to format research."
 
-**The other factor:** pgvector. The Phase 6 RAG stack requires a vector store. pgvector lives inside the same Postgres instance, which means the same RLS policies, same connection, same query interface. Firebase's equivalent would have been Pinecone or a separate managed service with its own auth and latency. One less integration is meaningful when building solo.
-
-**What Firebase did well:** Real-time listeners with minimal setup. Supabase has real-time too, but Firebase's SDKs are more ergonomic for it. For a read-heavy personal app with no collaborative real-time requirements, this wasn't worth the relational tradeoffs.
-
----
-
-### 2026-02-26 — Threads as a standalone feature → Threads as `chat_session_tags`
-
-**What changed:** Initial Threads implementation used a separate `threads` table with `thread_items`. Rewired to `chat_sessions` + `chat_session_tags` — Threads are now AI conversations scoped to a tag, not a separate data type.
-
-**Why:** The original model treated Threads as a manual curation tool — users explicitly create threads and add articles to them. This created a second organizational system alongside Tags, which fragments the UI and the data model. The rewired model collapses this: every AI conversation is a Thread, and it inherits tags automatically from the source article or quote. No manual curation required.
-
-**The downstream benefit:** Phase 8.5 (MCP server) can expose `getThreadBySessionId` and `listThreadsByTag` without any additional schema. External agents (Claude, GPT) can query a user's AI conversations organized by topic because the data is already structured that way. Building it right at Phase 3 means zero rework at Phase 8.5.
-
-**What we lost:** The commit history shows three attempts before settling on this model (`feat: implement Threads` → `fix: wire threads to real threads table` → `refactor: simplify tag count query`). The initial implementation was technically functional but conceptually wrong. Shipping the wrong model early and refactoring costs less than getting it right before shipping at all — but only barely.
-
----
-
-### 2026-02-27 — Migrating from Lovable to Vercel + own Supabase
-
-**What changed:** Accelerating Phase 9 (Vercel migration) from a future roadmap item to an immediate priority.
-
-**Why:** Lovable's edge function deployment is gated behind its own AI interface — only functions it generates can be registered with Supabase. Functions added via direct git push (`sonar-discover`, `generate-embedding`, `mcp`, `fetch-metadata`) existed in the repo but were never deployed. Attempting to deploy them via the Supabase Management API or CLI returned 403 because the Supabase project lives in Lovable's organization, not under the project owner's account. This is not a configuration issue — it's a structural ownership constraint with no workaround short of recreating each function through Lovable's own prompt flow.
-
-**The trigger:** Perplexity Sonar integration (`sonar-discover`) was complete and key was provisioned, but the function couldn't be deployed because of this constraint. The same constraint blocks `generate-embedding` (RAG) and `mcp` (developer platform) — both critical to Phases 6 and 8.5.
-
-**What was good about Lovable:** Zero-config start. No Supabase setup, no hosting config, no domain proxy. For a solo build at day zero, it removed the right friction.
-
-**What it cost:** Supabase project ownership sits in Lovable's org. No CLI access, no edge function control, no infra visibility. Acceptable early on; unacceptable when the product depends on custom server-side functions.
-
-| | Lovable | Vercel + Supabase |
-|---|---|---|
-| Setup time | ~0 (managed) | ~2 hrs (config, env wiring) |
-| Edge function deploy | Only functions Lovable creates via its own UI | Full CLI control — `supabase functions deploy` |
-| CI/CD | None | GitHub Actions, PR previews |
-| Cost at early stage | Low | Low |
-| Infra visibility | Opaque — Supabase project is in Lovable's org | Full ownership, own org |
-| Escape velocity | Hard — Lovable owns your Supabase project | You own everything |
+**The tradeoff:** We sacrifice immediate one-click compatibility with Google's NotebookLM in exchange for earlier access to a persistent, reasoning-capable context layer. This aligns the project more closely with the "Cursor for PMs" vision.
 

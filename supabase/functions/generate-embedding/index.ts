@@ -33,8 +33,33 @@ Deno.serve(async (req) => {
         if (claimsErr || !claimsData?.claims) return errorResponse("Unauthorized", 401);
         const userId = claimsData.claims.sub as string;
 
-        const { contentType, contentId, text } = await req.json();
-        if (!contentType || !contentId || !text) {
+        const { contentType, contentId, text, record, table, type } = await req.json();
+
+        let finalContentType = contentType;
+        let finalContentId = contentId;
+        let finalText = text;
+        let finalUserId = userId;
+
+        // Handle Supabase Webhook payload
+        if (record && table) {
+            finalContentType = table === "articles" ? "article" : "quote";
+            finalContentId = record.id;
+            finalUserId = record.user_id;
+
+            if (table === "articles") {
+                // For articles, combine title, description, and text for better context
+                const title = record.title || "";
+                const desc = record.og_description || "";
+                const content = record.content_text || "";
+                finalText = `${title}\n${desc}\n${content}`.trim();
+            } else if (table === "quotes") {
+                finalText = record.text || "";
+            }
+        }
+
+        if (!finalContentType || !finalContentId || !finalText) {
+            // If it's a webhook and we don't have enough data, just return OK to avoid retries
+            if (record) return new Response(JSON.stringify({ ok: true, skipped: true }), { headers: corsHeaders });
             return errorResponse("contentType, contentId, and text are required");
         }
 
@@ -47,7 +72,7 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({
                 model: "text-embedding-3-small",
-                input: text.slice(0, 8000), // token safety limit
+                input: finalText.slice(0, 8000), // token safety limit
             }),
         });
 
@@ -65,9 +90,9 @@ Deno.serve(async (req) => {
         const { error: upsertErr } = await client
             .from("content_embeddings")
             .upsert({
-                user_id: userId,
-                content_type: contentType,
-                content_id: contentId,
+                user_id: finalUserId,
+                content_type: finalContentType,
+                content_id: finalContentId,
                 embedding,
             }, { onConflict: "content_type,content_id" });
 
