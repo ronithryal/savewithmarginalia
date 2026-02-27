@@ -81,23 +81,34 @@ Deno.serve(async (req) => {
         }
 
 
-        // Generate embedding via OpenAI
-        const embRes = await fetch("https://api.openai.com/v1/embeddings", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${openaiKey}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                model: "text-embedding-3-small",
-                input: finalText.slice(0, 8000), // token safety limit
-            }),
-        });
+        // Generate embedding via OpenAI with retry for rate limits
+        let embRes: Response | null = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            embRes = await fetch("https://api.openai.com/v1/embeddings", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${openaiKey}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    model: "text-embedding-3-small",
+                    input: finalText.slice(0, 8000),
+                }),
+            });
 
-        if (!embRes.ok) {
-            const err = await embRes.text();
+            if (embRes.status === 429) {
+                const wait = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s
+                console.warn(`OpenAI 429 — retrying in ${wait}ms (attempt ${attempt + 1}/3)`);
+                await new Promise((r) => setTimeout(r, wait));
+                continue;
+            }
+            break;
+        }
+
+        if (!embRes || !embRes.ok) {
+            const err = embRes ? await embRes.text() : "No response";
             console.error("OpenAI embedding error:", err);
-            return errorResponse(`OpenAI error: ${embRes.status}`, 502);
+            return errorResponse(`OpenAI error: ${embRes?.status || "unknown"}`, 502);
         }
 
         const embData = await embRes.json();
