@@ -1,9 +1,7 @@
 # Marginalia — Agent Context
 
 ## Project Overview
-Marginalia (repo: `savewithmarginalia`) is a personal article and quote keeper built with React + TypeScript + Vite + Tailwind + shadcn/ui. It is hosted on Lovable (readmargin.lovable.app) and uses Supabase for database, auth, and edge functions. The Lovable project syncs 2-way with this GitHub repo — any commits pushed to `main` here will be reflected in the Lovable hosted app automatically.
-
-At its core, Marginalia is an executive intelligence engine — effectively a Cursor for PMs and Founder Associates. It operates as a quote-centric knowledge graph rather than a simple bookmarking app, serving as an agent-ready context layer for Claude and GPT. This structure is built to accelerate high-leverage workflows like synthesizing product vision, conducting investment research, and drafting executive briefings.
+Marginalia (repo: savewithmarginalia) is a personal article and quote keeper built with React + TypeScript + Vite + Tailwind + shadcn/ui, hosted on Lovable (readmargin.lovable.app) with Supabase for database, auth, and edge functions. It’s evolving into an executive intelligence engine — a quote‑centric knowledge graph and agent‑ready context layer for Claude, GPT, and other tools — designed to accelerate high‑leverage workflows like synthesizing product vision, conducting research, and drafting executive briefings and materials.
 
 **Frozen backup:** `ronithryal/marginalia-stable` — do not touch.
 
@@ -16,7 +14,7 @@ At its core, Marginalia is an executive intelligence engine — effectively a Cu
   domain proxy, and 2-way git sync. **Stay on Lovable through Phase 8** — it removes
   significant operational overhead while building solo. **Migrate to Vercel in Phase 9**
   when you need CI/CD, PR previews, and full infra control.
-- **AI:** Gemini Flash via Supabase edge functions (chat); OpenAI text-embedding-3-small (planned)
+- **AI:** Gemini Flash via Supabase edge functions (chat); OpenAI text-embedding-3-small (RAG), Claude 3.x (for reasoning and structured analysis), and a memory provider like Mem0 (planned)
 
 ### Introduced through the roadmap
 | Tool | Phase | Role |
@@ -201,6 +199,7 @@ query a user's Marginalia library via MCP (Phase 8.5) with proper citations and 
   Results grouped by type — Quotes first, then Articles.
 - **Agent-ready design**: retrieval functions built as clean, reusable modules so
   Phase 8.5 MCP server can call them directly without duplicating logic.
+- **Memory-ready design**: this RAG layer is designed so an external memory service like Mem0 can sit on top of the same embeddings/retrieval functions, providing persistent user facts and judgment across sessions.
 
 ---
 
@@ -336,11 +335,21 @@ is intentionally minimal — Drive folder sync + PDF pipeline only.
 #### Enterprise & Teams
 - **Teams & shared workspaces**: organizations, members, shared tag libraries.
   Shared Threads and tags for investment/research teams.
+- **Cursor for PMs**: Ingests interviews, community feedback (Discord/X), and analytics (PostHog) to synthesize "what to build next" into agent-ready specs for coding agents.
 - **Enterprise controls**: SSO/SAML, audit logs, data residency options, explicit
   policy of not training models on customer data.
 - **Positioning**: Marginalia as a **context layer** for agents and knowledge workers —
   personal libraries, team libraries, and external agents (MCP) all built on the same
   Supabase/Postgres + pgvector spine.
+
+---
+
+### Phase 12 — Active Memory & Executive Intelligence
+
+- **Weekly AI review sessions** to extract tacit knowledge and unwritten heuristics from the user.
+- **Persistent Memory Integration** with a provider like Mem0 to store preferences, judgments, and recurring conclusions across sessions.
+- **Strategic Brief generator**: Combines quotes, external sentiment (X/Discord), and analytics for any given tag.
+- **"What would I do?" proxy**: Long-term goal of Marginalia acting as a trusted proxy for the user's executive decision making.
 
 ---
 
@@ -358,3 +367,5 @@ is intentionally minimal — Drive folder sync + PDF pipeline only.
 - After making changes, verify the UI renders correctly at mobile (375px) and desktop (1280px)
 - Do not modify `supabase/functions/` edge functions without understanding the existing request/response contract
 - When adding new Supabase queries, always include `.eq('user_id', user.id)` or equivalent RLS-safe filter
+- New features should be designed so they can also be exposed as tools to external agents (via MCP/public API), with logic factored into reusable functions
+- Reusable insights (like recurring conclusions and preferences) should be stored in a memory-friendly structure linked to tags/IDs so they can be synced to a dedicated memory service later
