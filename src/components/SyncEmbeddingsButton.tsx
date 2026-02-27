@@ -11,6 +11,8 @@ const SyncEmbeddingsButton = ({ userId }: Props) => {
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState("");
 
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
   const run = async () => {
     setRunning(true);
     try {
@@ -51,37 +53,38 @@ const SyncEmbeddingsButton = ({ userId }: Props) => {
         return;
       }
 
-      setStatus(`Syncing ${total} items…`);
+      setStatus(`Syncing 0/${total} items…`);
 
       let done = 0;
-      const BATCH = 5;
 
-      // Process articles
-      for (let i = 0; i < missingArticles.length; i += BATCH) {
-        const batch = missingArticles.slice(i, i + BATCH);
-        await Promise.allSettled(
-          batch.map((a) =>
-            supabase.functions.invoke("generate-embedding", {
-              body: { record: a, table: "articles" },
-            })
-          )
-        );
-        done += batch.length;
-        setStatus(`Syncing… ${done}/${total}`);
+      // Process articles sequentially to avoid OpenAI rate limits
+      for (const a of missingArticles) {
+        await supabase.functions.invoke("generate-embedding", {
+          body: {
+            contentType: "article",
+            contentId: a.id,
+            text: [a.title, a.og_description, a.content_text]
+              .filter(Boolean)
+              .join("\n"),
+          },
+        });
+        done++;
+        setStatus(`Syncing ${done}/${total}…`);
+        await sleep(300);
       }
 
-      // Process quotes
-      for (let i = 0; i < missingQuotes.length; i += BATCH) {
-        const batch = missingQuotes.slice(i, i + BATCH);
-        await Promise.allSettled(
-          batch.map((q) =>
-            supabase.functions.invoke("generate-embedding", {
-              body: { record: q, table: "quotes" },
-            })
-          )
-        );
-        done += batch.length;
-        setStatus(`Syncing… ${done}/${total}`);
+      // Process quotes sequentially
+      for (const q of missingQuotes) {
+        await supabase.functions.invoke("generate-embedding", {
+          body: {
+            contentType: "quote",
+            contentId: q.id,
+            text: q.text,
+          },
+        });
+        done++;
+        setStatus(`Syncing ${done}/${total}…`);
+        await sleep(300);
       }
 
       toast.success(`Synced ${total} items.`);
