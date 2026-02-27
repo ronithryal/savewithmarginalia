@@ -42,7 +42,7 @@ serve(async (req) => {
                 "Content-Type": "application/json",
             },
             body: JSON.stringify({
-                model: "sonar",
+                model: "sonar-pro",
                 messages: [
                     {
                         role: "system",
@@ -56,8 +56,8 @@ serve(async (req) => {
 
         if (!sonarRes.ok) {
             const err = await sonarRes.text();
-            console.error("Sonar API error:", err);
-            return errorResponse(`Sonar API error: ${sonarRes.status}`);
+            console.error("Sonar API error:", sonarRes.status, err);
+            return errorResponse(`Sonar API error ${sonarRes.status}: ${err}`);
         }
 
         const sonarData = await sonarRes.json();

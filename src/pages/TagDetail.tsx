@@ -35,11 +35,11 @@ const TagDetail = () => {
         body: { tagName, recentTitles },
         headers: { Authorization: `Bearer ${session?.access_token}` },
       });
-      if (res.error) throw res.error;
+      if (res.error) throw new Error(res.data?.error ?? res.error.message ?? String(res.error));
       setSonarResults(res.data?.results ?? []);
       if ((res.data?.results ?? []).length === 0) toast.info("No new suggestions found");
-    } catch (err) {
-      toast.error("Sonar search failed — check your API key");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Sonar search failed");
     } finally {
       setSonarLoading(false);
     }
