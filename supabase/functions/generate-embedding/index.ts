@@ -33,35 +33,53 @@ Deno.serve(async (req) => {
         if (claimsErr || !claimsData?.claims) return errorResponse("Unauthorized", 401);
         const userId = claimsData.claims.sub as string;
 
-        const { contentType, contentId, text, record, table, type } = await req.json();
+        const body = await req.json();
 
-        let finalContentType = contentType;
-        let finalContentId = contentId;
-        let finalText = text;
-        let finalUserId = userId;
+        // --- Flexible Payload Normalisation ---
+        // Accepts any of these shapes from Lovable-generated code:
+        // 1. { contentType, contentId, text } — explicit
+        // 2. { record, table }               — webhook-style
+        // 3. { article }                     — Lovable may pass the DB row directly
+        // 4. { quote }
 
-        // Handle Supabase Webhook payload
+        let finalContentType: string | undefined = body.contentType;
+        let finalContentId: string | undefined = body.contentId;
+        let finalText: string | undefined = body.text;
+        let finalUserId: string = userId;
+
+        const record = body.record || body.article || body.quote || null;
+        const table = body.table
+            || (body.article ? "articles" : null)
+            || (body.quote ? "quotes" : null);
+
         if (record && table) {
             finalContentType = table === "articles" ? "article" : "quote";
             finalContentId = record.id;
-            finalUserId = record.user_id;
+            if (record.user_id) finalUserId = record.user_id;
 
             if (table === "articles") {
-                // For articles, combine title, description, and text for better context
                 const title = record.title || "";
-                const desc = record.og_description || "";
+                const desc = record.og_description || record.description || "";
                 const content = record.content_text || "";
                 finalText = `${title}\n${desc}\n${content}`.trim();
-            } else if (table === "quotes") {
+            } else {
                 finalText = record.text || "";
             }
         }
 
-        if (!finalContentType || !finalContentId || !finalText) {
-            // If it's a webhook and we don't have enough data, just return OK to avoid retries
-            if (record) return new Response(JSON.stringify({ ok: true, skipped: true }), { headers: corsHeaders });
-            return errorResponse("contentType, contentId, and text are required");
+        // Last resort: if text still missing but we have a record, use JSON
+        if (!finalText && record) {
+            finalText = JSON.stringify(record).slice(0, 2000);
         }
+
+        if (!finalContentType || !finalContentId || !finalText) {
+            console.error("Missing fields — body was:", JSON.stringify(body));
+            return errorResponse(
+                `contentType (${finalContentType}), contentId (${finalContentId}), and text are required`,
+                400
+            );
+        }
+
 
         // Generate embedding via OpenAI
         const embRes = await fetch("https://api.openai.com/v1/embeddings", {
