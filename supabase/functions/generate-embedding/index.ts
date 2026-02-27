@@ -102,8 +102,11 @@ Deno.serve(async (req) => {
             });
 
             if (embRes.status === 429) {
-                const wait = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s
-                console.warn(`OpenAI 429 — retrying in ${wait}ms`);
+                const errBody = await embRes.text();
+                // If it's 3 RPM limit, we need to wait significantly longer.
+                // Free tier is 3 RPM, so 20s per request.
+                const wait = attempt === 0 ? 20000 : 40000;
+                console.warn(`OpenAI 429 (Attempt ${attempt + 1}): ${errBody}. Waiting ${wait}ms...`);
                 await new Promise((r) => setTimeout(r, wait));
                 continue;
             }
@@ -113,8 +116,13 @@ Deno.serve(async (req) => {
         if (!embRes || !embRes.ok) {
             const err = embRes ? await embRes.text() : "No response";
             console.error("OpenAI error:", err);
-            return errorResponse(`OpenAI error: ${embRes?.status || "unknown"}`, 502);
+            // Help the user identify if it's a credit issue
+            if (err.includes("insufficient_quota")) {
+                return errorResponse("OpenAI Insufficient Quota: Please check your OpenAI balance/billing.", 502);
+            }
+            return errorResponse(`OpenAI error: ${embRes?.status || "unknown"} - ${err.slice(0, 100)}`, 502);
         }
+
 
         const embData = await embRes.json();
         const embedding = embData.data?.[0]?.embedding;
