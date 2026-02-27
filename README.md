@@ -184,6 +184,22 @@ The third factor is task granularity. Antigravity breaks work into discrete, lab
 
 ---
 
+### 2026-02-27 — Adopting the "Claude Code OS" Workflow
+
+**What changed:** Re-aligned the AI orchestration model to adopt best practices from Boris Cherny (creator of Claude Code) into the Marginalia development process.
+
+**Why:** The gap between PMs who use AI as a fast research assistant versus an operating system is compounding. Marginalia's thesis is that context is everything. The development process should match that thesis: structural, context-aware, and built for automation, not just speed.
+
+**The Workflow:**
+1. **Plan Node Default & Verification:** Never mark a task complete without proving it works. Hard check against "Would a staff engineer approve this?" Write plans for anything 3+ steps.
+2. **Subagent Offloading:** Spin up parallel subagents for isolated context gathering or scripting, keeping the main reasoning context clean.
+3. **Self-Improvement Loop:** Maintain a `tasks/lessons.md` track record. After any correction from the user, write a rule to prevent the same mistake. Review lessons at session start.
+4. **Demand Elegance:** For non-trivial changes, pause and look for the elegant solution (e.g., the Threads to `chat_session_tags` refactor) rather than accepting hacky first-pass code.
+
+This meta-pivot treats the AI as a staff engineer partner rather than a junior dev dumping code.
+
+---
+
 ### 2026-02-26 — Slogmap and Ruthless Scope Reduction
 
 **What changed:** Defined a rigid 4-5 hour solo sprint ("slogmap") that explicitly dropped all infrastructure, mobile apps, and social features to focus 100% on core intelligence (RAG, Sonar, NotebookLM export).
