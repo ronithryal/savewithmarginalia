@@ -69,6 +69,11 @@ const AddQuoteForm = ({ articleId, userId }: AddQuoteFormProps) => {
       setLastSavedQuoteId(data.id);
       setLastSavedText(data.text);
       queryClient.invalidateQueries({ queryKey: ["article-quotes", articleId] });
+
+      // Fire-and-forget embedding generation
+      supabase.functions.invoke("generate-embedding", {
+        body: { record: data, table: "quotes" },
+      }).catch(console.error);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }

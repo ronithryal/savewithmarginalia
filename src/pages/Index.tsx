@@ -150,6 +150,11 @@ const Index = () => {
         queryClient.invalidateQueries({ queryKey: ["articles"] });
       }).catch(console.error);
 
+      // Fire-and-forget embedding generation
+      supabase.functions.invoke("generate-embedding", {
+        body: { record: data, table: "articles" },
+      }).catch(console.error);
+
       setUrl("");
       navigate(`/articles/${data.id}`);
     } catch (err: any) {

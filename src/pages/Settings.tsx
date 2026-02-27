@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import FavoriteCreators from "@/components/FavoriteCreators";
+import SyncEmbeddingsButton from "@/components/SyncEmbeddingsButton";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -98,6 +99,14 @@ const Settings = () => {
             <Switch checked={chatEnabled} onCheckedChange={toggleChat} />
           )}
         </div>
+      </section>
+
+      {/* AI Intelligence */}
+      <section className="mb-12">
+        <h2 className="font-display text-xl font-semibold text-foreground mb-6">
+          AI Intelligence
+        </h2>
+        <SyncEmbeddingsButton userId={user.id} />
       </section>
 
       {/* Favorite Creators */}
