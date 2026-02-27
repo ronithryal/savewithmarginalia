@@ -72,7 +72,11 @@ const AddQuoteForm = ({ articleId, userId }: AddQuoteFormProps) => {
 
       // Fire-and-forget embedding generation
       supabase.functions.invoke("generate-embedding", {
-        body: { record: data, table: "quotes" },
+        body: {
+          contentType: "quote",
+          contentId: data.id,
+          text: data.text,
+        },
       }).catch(console.error);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });

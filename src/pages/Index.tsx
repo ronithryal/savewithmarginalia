@@ -152,7 +152,11 @@ const Index = () => {
 
       // Fire-and-forget embedding generation
       supabase.functions.invoke("generate-embedding", {
-        body: { record: data, table: "articles" },
+        body: {
+          contentType: "article",
+          contentId: data.id,
+          text: [data.title, data.og_description, data.content_text].filter(Boolean).join("\n") || data.title,
+        },
       }).catch(console.error);
 
       setUrl("");
