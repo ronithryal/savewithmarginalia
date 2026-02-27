@@ -36,6 +36,8 @@ export function formatNotebookLMExport(
 }
 
 export async function copyAndOpenNotebookLM(markdown: string): Promise<void> {
+    // Open tab synchronously before any await — browsers block window.open() after async ops
+    const tab = window.open("https://notebooklm.google.com", "_blank");
     await navigator.clipboard.writeText(markdown);
-    window.open("https://notebooklm.google.com", "_blank");
+    if (!tab) throw new Error("popup_blocked");
 }
