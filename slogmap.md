@@ -113,3 +113,19 @@
 ① Google OAuth → ③ Sonar → ④ RAG → ⑤ NotebookLM → ⑦ UX Polish → ⑧ MCP → ② X Import → ⑨ Digest → ⑩ PDF
 
 *(Core intelligence features first, platform + integrations after)*
+
+---
+
+## Agent Guidelines
+
+Rules for all sprint work tonight. Every task must follow these.
+
+- **Threads = `chat_sessions` + `chat_session_tags` only.** Do NOT touch the `threads` or `thread_items` tables — they are unused placeholders.
+- **All Supabase queries must be RLS-safe.** Always include `.eq('user_id', user.id)` or equivalent. No unscoped queries.
+- **Never edit existing migrations.** Schema changes go in a new file: `supabase/migrations/<timestamp>_<name>.sql`.
+- **Preserve existing routes and nav.** Do not add new routes unless the task explicitly requires it.
+- **Do not introduce new npm/bun packages** without confirming compatibility with the Vite + Bun setup.
+- **Respect design system.** Use existing shadcn/ui components and Tailwind tokens — no new UI libraries.
+- **Sprint priority order:** ③ Sonar → ④ RAG → ⑤ NotebookLM → ⑦ UX Polish → ⑧ MCP → ② X Import → ⑨ Digest → ⑩ PDF. Do not start a lower-priority item if a higher-priority one is incomplete.
+- **Skip entirely tonight:** domain purchase, Cloudflare, PostHog, Sentry, Upstash, LinkedIn import, Phase 9 social/sharing, Phase 9.5 ambient capture (except weekly digest), Phase 10 mobile, Phase 11 monetization.
+

@@ -34,13 +34,13 @@ The two suggestions should be short (under 8 words each), provocative follow-up 
 
 function extractKeywords(message: string): string[] {
   const stopWords = new Set([
-    "a","an","the","is","are","was","were","be","been","being","have","has","had",
-    "do","does","did","will","would","could","should","may","might","can","shall",
-    "i","me","my","we","our","you","your","he","she","it","they","them","their",
-    "what","which","who","whom","this","that","these","those","am","at","by","for",
-    "from","in","into","of","on","to","with","and","but","or","nor","not","so",
-    "if","then","about","how","when","where","why","all","any","some","most","much",
-    "many","more","show","tell","find","get","give","make","know","think","see",
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+    "do", "does", "did", "will", "would", "could", "should", "may", "might", "can", "shall",
+    "i", "me", "my", "we", "our", "you", "your", "he", "she", "it", "they", "them", "their",
+    "what", "which", "who", "whom", "this", "that", "these", "those", "am", "at", "by", "for",
+    "from", "in", "into", "of", "on", "to", "with", "and", "but", "or", "nor", "not", "so",
+    "if", "then", "about", "how", "when", "where", "why", "all", "any", "some", "most", "much",
+    "many", "more", "show", "tell", "find", "get", "give", "make", "know", "think", "see",
   ]);
   return message
     .toLowerCase()
@@ -87,11 +87,10 @@ Deno.serve(async (req) => {
     const userId = claimsData.claims.sub as string;
 
     const { message, history, messages: messagesArray } = await req.json();
-    
-    // Support both old format (message + history) and new format (messages array)
+
     let conversationMessages: { role: string; content: string }[] = [];
     let lastUserMessage = "";
-    
+
     if (messagesArray && Array.isArray(messagesArray)) {
       conversationMessages = messagesArray;
       const lastUser = [...messagesArray].reverse().find((m: any) => m.role === "user");
@@ -100,7 +99,7 @@ Deno.serve(async (req) => {
       lastUserMessage = message;
       conversationMessages = [...(history || []), { role: "user", content: message }];
     }
-    
+
     if (!lastUserMessage) {
       return new Response(JSON.stringify({ error: "message is required" }), {
         status: 400,
@@ -122,60 +121,87 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Extract keywords from last user message
-    const keywords = extractKeywords(lastUserMessage);
+    // ── RAG: semantic retrieval first, keyword fallback if needed ──
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
     let contextParts: string[] = [];
+    let usedRAG = false;
 
-    if (keywords.length > 0) {
-      const articleOrClauses = keywords
-        .flatMap((k) => [
-          `title.ilike.%${k}%`,
-          `content_text.ilike.%${k}%`,
-        ])
-        .join(",");
+    if (openaiKey) {
+      try {
+        const embRes = await fetch("https://api.openai.com/v1/embeddings", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "text-embedding-3-small", input: lastUserMessage.slice(0, 8000) }),
+        });
 
-      const { data: articles } = await client
-        .from("articles")
-        .select("id, title, content_text, url, source_domain")
-        .eq("user_id", userId)
-        .or(articleOrClauses)
-        .limit(6);
+        if (embRes.ok) {
+          const embData = await embRes.json();
+          const queryEmbedding = embData.data?.[0]?.embedding;
 
-      for (const a of articles || []) {
-        const snippet = (a.content_text || "").slice(0, 400);
-        contextParts.push(
-          `[Saved article] "${a.title}" from ${a.source_domain}\n${snippet}`
-        );
+          if (queryEmbedding) {
+            const { data: matches } = await client.rpc("match_content_embeddings", {
+              query_embedding: queryEmbedding,
+              match_user_id: userId,
+              match_count: 8,
+            });
+
+            if (matches && matches.length > 0) {
+              usedRAG = true;
+              const articleIds = matches.filter((m: any) => m.content_type === "article").map((m: any) => m.content_id);
+              const quoteIds = matches.filter((m: any) => m.content_type === "quote").map((m: any) => m.content_id);
+
+              const [{ data: articles }, { data: quotes }] = await Promise.all([
+                articleIds.length > 0
+                  ? client.from("articles").select("id, title, content_text, url, source_domain").in("id", articleIds).eq("user_id", userId)
+                  : Promise.resolve({ data: [] }),
+                quoteIds.length > 0
+                  ? client.from("quotes").select("id, text, article_id").in("id", quoteIds).eq("user_id", userId)
+                  : Promise.resolve({ data: [] }),
+              ]);
+
+              for (const a of articles || []) {
+                contextParts.push(`[Saved article] "${a.title}" from ${a.source_domain}\n${(a.content_text || "").slice(0, 500)}`);
+              }
+              if ((quotes || []).length > 0) {
+                const artIds = [...new Set((quotes as any[]).map((q) => q.article_id))];
+                const { data: arts } = await client.from("articles").select("id, title").in("id", artIds);
+                const artMap = Object.fromEntries((arts || []).map((a: any) => [a.id, a]));
+                for (const q of quotes as any[]) {
+                  contextParts.push(`[Saved quote] "${q.text}" — from "${artMap[q.article_id]?.title || "Unknown"}"`);
+                }
+              }
+            }
+          }
+        }
+      } catch (ragErr) {
+        console.warn("RAG failed, falling back to keyword:", ragErr);
       }
+    }
 
-      const quoteOrClauses = keywords.map((k) => `text.ilike.%${k}%`).join(",");
-      const { data: quotes } = await client
-        .from("quotes")
-        .select("id, text, article_id")
-        .eq("user_id", userId)
-        .or(quoteOrClauses)
-        .limit(6);
-
-      if (quotes && quotes.length > 0) {
-        const artIds = [...new Set(quotes.map((q: any) => q.article_id))];
-        const { data: arts } = await client
-          .from("articles")
-          .select("id, title, url")
-          .in("id", artIds);
-        const artMap = Object.fromEntries(
-          (arts || []).map((a: any) => [a.id, a])
-        );
-
-        for (const q of quotes) {
-          const art = artMap[q.article_id] || {};
-          contextParts.push(
-            `[Saved quote] "${q.text}" — from "${art.title || "Unknown"}"`
-          );
+    // ── Keyword fallback ──
+    if (!usedRAG) {
+      const keywords = extractKeywords(lastUserMessage);
+      if (keywords.length > 0) {
+        const articleOrClauses = keywords.flatMap((k) => [`title.ilike.%${k}%`, `content_text.ilike.%${k}%`]).join(",");
+        const { data: articles } = await client.from("articles").select("id, title, content_text, url, source_domain").eq("user_id", userId).or(articleOrClauses).limit(6);
+        for (const a of articles || []) {
+          contextParts.push(`[Saved article] "${a.title}" from ${a.source_domain}\n${(a.content_text || "").slice(0, 400)}`);
+        }
+        const quoteOrClauses = keywords.map((k) => `text.ilike.%${k}%`).join(",");
+        const { data: quotes } = await client.from("quotes").select("id, text, article_id").eq("user_id", userId).or(quoteOrClauses).limit(6);
+        if (quotes && quotes.length > 0) {
+          const artIds = [...new Set(quotes.map((q: any) => q.article_id))];
+          const { data: arts } = await client.from("articles").select("id, title, url").in("id", artIds);
+          const artMap = Object.fromEntries((arts || []).map((a: any) => [a.id, a]));
+          for (const q of quotes) {
+            const art = artMap[q.article_id] || {};
+            contextParts.push(`[Saved quote] "${q.text}" — from "${art.title || "Unknown"}"`);
+          }
         }
       }
     }
 
-    // Fallback: recent articles
+    // ── Final fallback: recent articles if still nothing ──
     if (contextParts.length === 0) {
       const { data: articles } = await client
         .from("articles")
@@ -183,12 +209,8 @@ Deno.serve(async (req) => {
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(5);
-
       for (const a of articles || []) {
-        const snippet = (a.content_text || "").slice(0, 400);
-        contextParts.push(
-          `[Saved article] "${a.title}" from ${a.source_domain}\n${snippet}`
-        );
+        contextParts.push(`[Saved article] "${a.title}" from ${a.source_domain}\n${(a.content_text || "").slice(0, 400)}`);
       }
     }
 
@@ -242,8 +264,7 @@ Deno.serve(async (req) => {
     }
 
     const aiData = await aiResponse.json();
-    let rawAnswer =
-      aiData.choices?.[0]?.message?.content || "I couldn't generate a response.";
+    let rawAnswer = aiData.choices?.[0]?.message?.content || "I couldn't generate a response.";
 
     // Extract followups JSON from the end of the response
     let followups: string[] = [];

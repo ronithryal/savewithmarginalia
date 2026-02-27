@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { format } from "date-fns";
-import { Trash2, Pencil } from "lucide-react";
+import { Trash2, Pencil, Share2 } from "lucide-react";
+import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface QuoteCardProps {
@@ -158,6 +159,32 @@ const QuoteCard = ({ quote, article, fullWidth = false, onDelete, onTextEdit }: 
       </div>
 
       <AiExplainButton text={quote.text} articleUrl={article?.url} articleId={article?.id} quote={quote} />
+
+      {/* Share button */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const shareText = `"${quote.text}"${article?.title ? ` — ${article.title}` : ""}`;
+              const shareUrl = article?.url || window.location.href;
+              if (navigator.share) {
+                await navigator.share({ text: shareText, url: shareUrl }).catch(() => { });
+              } else {
+                await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+                toast.success("Copied to clipboard");
+              }
+            }}
+            className="absolute bottom-2 right-2 bg-background/80 backdrop-blur-sm text-muted-foreground hover:text-accent transition-colors p-1.5 rounded-md opacity-0 group-hover:opacity-100"
+            aria-label="Share quote"
+          >
+            <Share2 className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">Share</TooltipContent>
+      </Tooltip>
+
       {onDelete && (
         <button
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(quote.id); }}

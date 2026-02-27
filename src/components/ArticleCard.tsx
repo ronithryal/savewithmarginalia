@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
-import { ExternalLink, Link2, Trash2, Pencil } from "lucide-react";
+import { ExternalLink, Link2, Trash2, Pencil, Share2 } from "lucide-react";
+import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 interface ArticleCardProps {
   article: {
@@ -62,6 +63,30 @@ const DeleteButton = ({ onDelete, id }: { onDelete: (id: string) => void; id: st
   >
     <Trash2 className="h-3.5 w-3.5" />
   </button>
+);
+
+const ShareButton = ({ url, title }: { url: string; title: string }) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <button
+        onClick={async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (navigator.share) {
+            await navigator.share({ title, url }).catch(() => { });
+          } else {
+            await navigator.clipboard.writeText(url);
+            toast.success("Link copied to clipboard");
+          }
+        }}
+        className="absolute bottom-2 right-2 bg-foreground/80 backdrop-blur-sm text-background hover:text-accent transition-colors p-1.5 rounded-md sm:opacity-0 sm:group-hover:opacity-100"
+        aria-label="Share article"
+      >
+        <Share2 className="h-3.5 w-3.5" />
+      </button>
+    </TooltipTrigger>
+    <TooltipContent side="top" className="text-xs">Share</TooltipContent>
+  </Tooltip>
 );
 
 const AiExplainButton = ({ url, articleId }: { url: string; articleId: string }) => {
@@ -232,6 +257,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
         </div>
 
         <AiExplainButton url={article.url} articleId={article.id} />
+        <ShareButton url={article.url} title={article.title} />
         {onDelete && <DeleteButton onDelete={onDelete} id={article.id} />}
       </div>
     );
@@ -273,6 +299,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
         </div>
 
         <AiExplainButton url={article.url} articleId={article.id} />
+        <ShareButton url={article.url} title={article.title} />
         {onDelete && <DeleteButton onDelete={onDelete} id={article.id} />}
       </div>
     );
@@ -333,6 +360,7 @@ const ArticleCard = ({ article, fullWidth = false, onDelete, onTitleEdit }: Arti
       </div>
 
       <AiExplainButton url={article.url} articleId={article.id} />
+      <ShareButton url={article.url} title={article.title} />
       {onDelete && <DeleteButton onDelete={onDelete} id={article.id} />}
     </div>
   );

@@ -3,10 +3,12 @@ import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom"
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, BookOpen, Sparkles, X } from "lucide-react";
+import { toast } from "sonner";
 import ArticleCard from "@/components/ArticleCard";
 import QuoteCard from "@/components/QuoteCard";
 import ThreadCard from "@/components/ThreadCard";
+import { formatNotebookLMExport, copyAndOpenNotebookLM } from "@/lib/exportNotebookLM";
 
 type Filter = "all" | "articles" | "quotes" | "threads";
 
@@ -19,6 +21,52 @@ const TagDetail = () => {
   const [searchParams] = useSearchParams();
   const initialFilter = (searchParams.get("filter") as Filter) || "all";
   const [filter, setFilter] = useState<Filter>(initialFilter);
+  const [exporting, setExporting] = useState(false);
+  const [sonarResults, setSonarResults] = useState<{ title: string; url: string; description: string; domain: string }[]>([]);
+  const [sonarLoading, setSonarLoading] = useState(false);
+
+  const handleFindMore = async () => {
+    if (!tag) return;
+    setSonarLoading(true);
+    try {
+      const recentTitles = (articles ?? []).slice(0, 5).map((a: any) => a.title);
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await supabase.functions.invoke("sonar-discover", {
+        body: { tagName, recentTitles },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (res.error) throw res.error;
+      setSonarResults(res.data?.results ?? []);
+      if ((res.data?.results ?? []).length === 0) toast.info("No new suggestions found");
+    } catch (err) {
+      toast.error("Sonar search failed — check your API key");
+    } finally {
+      setSonarLoading(false);
+    }
+  };
+
+  const handleSaveFromSonar = async (url: string) => {
+    try {
+      await supabase.functions.invoke("bookmarklet-save", { body: { url } });
+      toast.success("Saved to your library");
+    } catch {
+      toast.error("Failed to save");
+    }
+  };
+
+  const handleExportNotebookLM = async () => {
+    if (!tag || !articles || !quotes) return;
+    setExporting(true);
+    try {
+      const markdown = formatNotebookLMExport(tagName, articles, quotes as any[]);
+      await copyAndOpenNotebookLM(markdown);
+      toast.success("Copied to clipboard — paste into NotebookLM as a new source");
+    } catch {
+      toast.error("Export failed — please try again");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // ── Tag lookup ──
   const { data: tag } = useQuery({
@@ -198,13 +246,64 @@ const TagDetail = () => {
         <ArrowLeft className="h-3.5 w-3.5" /> Back to tags
       </Link>
 
-      <h1 className="font-display text-3xl font-bold tracking-tight text-foreground mb-1">
-        #{tagName}
-      </h1>
+      <div className="flex items-start justify-between mb-1">
+        <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
+          #{tagName}
+        </h1>
+        <div className="flex items-center gap-3 mt-1">
+          <button
+            onClick={handleFindMore}
+            disabled={sonarLoading}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+            title="Find more with Sonar"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {sonarLoading ? "Searching…" : "Find more"}
+          </button>
+          <button
+            onClick={handleExportNotebookLM}
+            disabled={exporting || !articles?.length}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+            title="Export to NotebookLM"
+          >
+            <BookOpen className="h-3.5 w-3.5" />
+            {exporting ? "Exporting…" : "Export →"}
+          </button>
+        </div>
+      </div>
       <p className="text-sm text-muted-foreground mb-8">
         {ac} {ac === 1 ? "article" : "articles"} · {qc} {qc === 1 ? "quote" : "quotes"}
         {tc > 0 && ` · ${tc} ${tc === 1 ? "thread" : "threads"}`}
       </p>
+
+      {/* Sonar results */}
+      {sonarResults.length > 0 && (
+        <div className="mb-6 border border-border rounded-lg p-4 bg-muted/30">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3" /> Suggested by Sonar
+            </p>
+            <button onClick={() => setSonarResults([])} className="text-muted-foreground hover:text-foreground">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <div className="space-y-3">
+            {sonarResults.map((r, i) => (
+              <div key={i} className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{r.title}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{r.description}</p>
+                  <p className="text-xs text-accent mt-0.5">{r.domain}</p>
+                </div>
+                <button
+                  onClick={() => handleSaveFromSonar(r.url)}
+                  className="flex-shrink-0 text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:opacity-90 transition-opacity"
+                >Save</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filter pills */}
       <div className="flex gap-2 mb-8 flex-wrap">
@@ -213,8 +312,8 @@ const TagDetail = () => {
             key={p.value}
             onClick={() => setFilter(p.value)}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filter === p.value
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+              ? "bg-primary text-primary-foreground"
+              : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
               }`}
           >
             {p.label}
