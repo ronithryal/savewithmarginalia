@@ -30,103 +30,24 @@ interface RedditItem {
   pubDate: string;
 }
 
-// --- Blocked domains for HN ---
-const BLOCKED_DOMAINS = new Set([
-  "github.com", "gitlab.com", "amazon.com", "goodreads.com",
-  "amzn.to", "archive.org", "wikipedia.org", "youtube.com", "reddit.com",
-]);
-
-const BLOCKED_TITLE_PREFIXES = [
-  "ask hn:", "show hn:", "tell hn:", "launch hn:", "hiring:",
-];
-
-function filterHNHit(h: any): boolean {
-  if (!h.url) return false;
-  if (h.url.toLowerCase().endsWith(".pdf")) return false;
+// --- Sonar Discover (replaces HN/Lobsters/DEV.to) ---
+async function fetchSonarForTag(
+  tagName: string,
+  recentTitles: string[]
+): Promise<ExternalItem[]> {
   try {
-    const host = new URL(h.url).hostname.replace("www.", "");
-    if (BLOCKED_DOMAINS.has(host)) return false;
-  } catch { return false; }
-  const titleLower = (h.title || "").toLowerCase();
-  if (BLOCKED_TITLE_PREFIXES.some(p => titleLower.startsWith(p))) return false;
-  if (/\bbook\b/i.test(h.title) || /\brepo\b/i.test(h.title)) return false;
-  return true;
-}
-
-// --- HN Algolia ---
-async function fetchHNForTag(keyword: string): Promise<ExternalItem[]> {
-  try {
-    const q = encodeURIComponent(keyword);
-    const res = await fetch(
-      `https://hn.algolia.com/api/v1/search_by_date?tags=story&query=${q}&numericFilters=points>10&hitsPerPage=15`
-    );
-    if (!res.ok) return [];
-    const json = await res.json();
-    return (json.hits ?? [])
-      .filter(filterHNHit)
-      .slice(0, 3)
-      .map((h: any) => ({
-        title: h.title || "Untitled",
-        link: h.url,
-        pubDate: h.created_at || "",
-        source: "Hacker News",
-        meta: `${h.points ?? 0} points`,
-        matchedTag: keyword,
-      }));
-  } catch {
-    return [];
-  }
-}
-
-// --- DEV.to ---
-async function fetchDevToForTag(keyword: string): Promise<ExternalItem[]> {
-  try {
-    const tag = keyword.toLowerCase().replace(/\s+/g, "-");
-    const res = await fetch(
-      `https://dev.to/api/articles?tag=${encodeURIComponent(tag)}&per_page=5&top=7`
-    );
-    if (!res.ok) return [];
-    const json = await res.json();
-    return (json ?? []).map((a: any) => ({
-      title: a.title || "Untitled",
-      link: a.url,
-      pubDate: a.published_at || a.created_at || "",
-      thumbnail: a.cover_image || "",
-      source: "DEV.to",
-      meta: a.user?.name || "",
-      matchedTag: keyword,
+    const { data, error } = await supabase.functions.invoke("sonar-discover", {
+      body: { tagName, recentTitles },
+    });
+    if (error || !data?.results || !Array.isArray(data.results)) return [];
+    return data.results.map((r: any) => ({
+      title: r.title || "Untitled",
+      link: r.url || "",
+      pubDate: new Date().toISOString(),
+      source: r.domain || "Sonar",
+      meta: r.description || "",
+      matchedTag: tagName,
     }));
-  } catch {
-    return [];
-  }
-}
-
-// --- Lobste.rs ---
-async function fetchLobstersForTag(keyword: string): Promise<ExternalItem[]> {
-  try {
-    const tag = keyword.toLowerCase().replace(/\s+/g, "-");
-    const res = await fetch(`https://lobste.rs/t/${encodeURIComponent(tag)}.json`);
-    if (!res.ok) return [];
-    const json = await res.json();
-    return (json ?? [])
-      .filter((p: any) => {
-        if (!p.url) return false;
-        try {
-          const host = new URL(p.url).hostname.replace("www.", "");
-          if (host === "github.com" || host === "gitlab.com") return false;
-        } catch { return false; }
-        return true;
-      })
-      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, 3)
-      .map((p: any) => ({
-        title: p.title || "Untitled",
-        link: p.url,
-        pubDate: p.created_at || "",
-        source: "Lobsters",
-        meta: `${p.score ?? 0} points`,
-        matchedTag: keyword,
-      }));
   } catch {
     return [];
   }
@@ -223,9 +144,23 @@ const Discover = () => {
     enabled: !!user,
   });
 
-  // Trending: HN + Lobsters + DEV.to per tag
+  // Fetch recent titles for Sonar context
+  const { data: recentTitles } = useQuery({
+    queryKey: ["discover-recent-titles", refreshKey],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("articles")
+        .select("title")
+        .order("created_at", { ascending: false })
+        .limit(5);
+      return (data ?? []).map((a) => a.title).filter(Boolean);
+    },
+    enabled: !!user,
+  });
+
+  // Trending: Sonar Discover per tag
   const { data: trendingItems, isLoading: loadingTrending } = useQuery({
-    queryKey: ["discover-trending", topTags, savedUrls, refreshKey],
+    queryKey: ["discover-trending", topTags, savedUrls, recentTitles, refreshKey],
     queryFn: async () => {
       if (!topTags || topTags.length === 0 || !savedUrls) return [];
 
@@ -234,31 +169,18 @@ const Discover = () => {
 
       await Promise.all(
         topTags.map(async (tag) => {
-          const [hnItems, lobsterItems, devItems] = await Promise.all([
-            fetchHNForTag(tag.name),
-            fetchLobstersForTag(tag.name),
-            fetchDevToForTag(tag.name),
-          ]);
-
-          const merged = [...hnItems, ...lobsterItems, ...devItems]
-            .sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
-
-          let count = 0;
-          for (const item of merged) {
-            if (count >= 3) break;
+          const items = await fetchSonarForTag(tag.name, recentTitles ?? []);
+          for (const item of items) {
             if (!item.link || seenUrls.has(item.link) || savedUrls.has(item.link)) continue;
             seenUrls.add(item.link);
             allItems.push(item);
-            count++;
           }
         })
       );
 
-      return allItems.sort(
-        (a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime()
-      );
+      return allItems;
     },
-    enabled: !!user && !!topTags && topTags.length > 0 && !!savedUrls,
+    enabled: !!user && !!topTags && topTags.length > 0 && !!savedUrls && recentTitles !== undefined,
   });
 
   // Reddit discussions via edge function
