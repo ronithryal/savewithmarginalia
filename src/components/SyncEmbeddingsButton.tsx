@@ -59,7 +59,7 @@ const SyncEmbeddingsButton = ({ userId }: Props) => {
 
       // Process articles sequentially to avoid OpenAI rate limits
       for (const a of missingArticles) {
-        await supabase.functions.invoke("generate-embedding", {
+        const { error } = await supabase.functions.invoke("generate-embedding", {
           body: {
             contentType: "article",
             contentId: a.id,
@@ -68,6 +68,7 @@ const SyncEmbeddingsButton = ({ userId }: Props) => {
               .join("\n"),
           },
         });
+        if (error) throw error;
         done++;
         setStatus(`Syncing ${done}/${total}…`);
         await sleep(300);
@@ -75,17 +76,19 @@ const SyncEmbeddingsButton = ({ userId }: Props) => {
 
       // Process quotes sequentially
       for (const q of missingQuotes) {
-        await supabase.functions.invoke("generate-embedding", {
+        const { error } = await supabase.functions.invoke("generate-embedding", {
           body: {
             contentType: "quote",
             contentId: q.id,
             text: q.text,
           },
         });
+        if (error) throw error;
         done++;
         setStatus(`Syncing ${done}/${total}…`);
         await sleep(300);
       }
+
 
       toast.success(`Synced ${total} items.`);
       setStatus("");

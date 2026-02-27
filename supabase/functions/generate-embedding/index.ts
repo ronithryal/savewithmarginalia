@@ -27,13 +27,17 @@ Deno.serve(async (req) => {
 
         const client = createClient(supabaseUrl, serviceKey);
 
-        // Verify user
+        // Verify user via official getUser method
         const token = authHeader.replace("Bearer ", "");
-        const { data: claimsData, error: claimsErr } = await client.auth.getClaims(token);
-        if (claimsErr || !claimsData?.claims) return errorResponse("Unauthorized", 401);
-        const userId = claimsData.claims.sub as string;
+        const { data: { user }, error: userErr } = await client.auth.getUser(token);
+        if (userErr || !user) {
+            console.error("Auth error:", userErr);
+            return errorResponse("Unauthorized", 401);
+        }
+        const userId = user.id;
 
         const body = await req.json();
+        console.log("Processing embedding request for user:", userId);
 
         // --- Flexible Payload Normalisation ---
         // Accepts any of these shapes from Lovable-generated code:
@@ -73,13 +77,14 @@ Deno.serve(async (req) => {
         }
 
         if (!finalContentType || !finalContentId || !finalText) {
-            console.error("Missing fields — body was:", JSON.stringify(body));
+            console.error("Missing fields! ContentType:", finalContentType, "ContentId:", finalContentId, "HasText:", !!finalText);
             return errorResponse(
                 `contentType (${finalContentType}), contentId (${finalContentId}), and text are required`,
                 400
             );
         }
 
+        console.log(`Generating embedding for ${finalContentType}:${finalContentId} (length: ${finalText.length})`);
 
         // Generate embedding via OpenAI with retry for rate limits
         let embRes: Response | null = null;
@@ -98,7 +103,7 @@ Deno.serve(async (req) => {
 
             if (embRes.status === 429) {
                 const wait = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s
-                console.warn(`OpenAI 429 — retrying in ${wait}ms (attempt ${attempt + 1}/3)`);
+                console.warn(`OpenAI 429 — retrying in ${wait}ms`);
                 await new Promise((r) => setTimeout(r, wait));
                 continue;
             }
@@ -107,13 +112,15 @@ Deno.serve(async (req) => {
 
         if (!embRes || !embRes.ok) {
             const err = embRes ? await embRes.text() : "No response";
-            console.error("OpenAI embedding error:", err);
+            console.error("OpenAI error:", err);
             return errorResponse(`OpenAI error: ${embRes?.status || "unknown"}`, 502);
         }
 
         const embData = await embRes.json();
         const embedding = embData.data?.[0]?.embedding;
-        if (!embedding) return errorResponse("No embedding returned from OpenAI", 502);
+        if (!embedding) return errorResponse("No embedding returned", 502);
+
+        console.log(`Upserting embedding for user: ${finalUserId}`);
 
         // Upsert into content_embeddings
         const { error: upsertErr } = await client
@@ -126,10 +133,11 @@ Deno.serve(async (req) => {
             }, { onConflict: "content_type,content_id" });
 
         if (upsertErr) {
-            console.error("Upsert error:", upsertErr);
+            console.error("Database upsert failure:", upsertErr);
             return errorResponse(`DB error: ${upsertErr.message}`, 500);
         }
 
+        console.log("Successfully persisted embedding.");
         return new Response(JSON.stringify({ ok: true }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
