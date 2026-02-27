@@ -103,10 +103,8 @@ Deno.serve(async (req) => {
 
             if (embRes.status === 429) {
                 const errBody = await embRes.text();
-                // If it's 3 RPM limit, we need to wait significantly longer.
-                // Free tier is 3 RPM, so 20s per request.
-                const wait = attempt === 0 ? 20000 : 40000;
-                console.warn(`OpenAI 429 (Attempt ${attempt + 1}): ${errBody}. Waiting ${wait}ms...`);
+                const wait = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s
+                console.warn(`OpenAI 429 (Attempt ${attempt + 1}): ${errBody}. Retrying in ${wait}ms...`);
                 await new Promise((r) => setTimeout(r, wait));
                 continue;
             }
