@@ -125,7 +125,52 @@ serve(async (req) => {
         return jsonResponse({ session, messages: messages ?? [] }, corsHeaders);
     }
 
-    return new Response(JSON.stringify({ error: `Unknown tool: ${tool}. Available: listTags, listArticlesByTag, listQuotesByTag, getThreadBySessionId` }), {
+    // ── Tool: search ──
+    if (tool === "search") {
+        const body = await req.json().catch(() => ({}));
+        const query = body.query || url.searchParams.get("query");
+        if (!query) return errorResponse("query required", corsHeaders);
+
+        const openaiKey = Deno.env.get("OPENAI_API_KEY");
+        if (!openaiKey) return errorResponse("OPENAI_API_KEY not configured", corsHeaders, 500);
+
+        // Generate embedding
+        const embRes = await fetch("https://api.openai.com/v1/embeddings", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ model: "text-embedding-3-small", input: query.slice(0, 8000) }),
+        });
+
+        if (!embRes.ok) return errorResponse("Failed to generate embedding", corsHeaders, 502);
+        const embData = await embRes.json();
+        const queryEmbedding = embData.data?.[0]?.embedding;
+
+        // Semantic search
+        const { data: matches, error } = await supabase.rpc("match_content_embeddings", {
+            query_embedding: queryEmbedding,
+            match_user_id: userId,
+            match_count: 10,
+        });
+
+        if (error) return errorResponse(error.message, corsHeaders);
+
+        // Fetch full content for matches
+        const articleIds = matches.filter((m: any) => m.content_type === "article").map((m: any) => m.content_id);
+        const quoteIds = matches.filter((m: any) => m.content_type === "quote").map((m: any) => m.content_id);
+
+        const [{ data: articles }, { data: quotes }] = await Promise.all([
+            articleIds.length > 0
+                ? supabase.from("articles").select("id, title, url, source_domain, og_description").in("id", articleIds)
+                : Promise.resolve({ data: [] }),
+            quoteIds.length > 0
+                ? supabase.from("quotes").select("id, text, article_id").in("id", quoteIds)
+                : Promise.resolve({ data: [] }),
+        ]);
+
+        return jsonResponse({ articles: articles ?? [], quotes: quotes ?? [] }, corsHeaders);
+    }
+
+    return new Response(JSON.stringify({ error: `Unknown tool: ${tool}. Available: listTags, listArticlesByTag, listQuotesByTag, getThreadBySessionId, search` }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 });
