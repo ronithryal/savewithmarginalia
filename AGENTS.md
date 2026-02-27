@@ -14,11 +14,15 @@ Marginalia (repo: savewithmarginalia) is a personal article and quote keeper bui
   domain proxy, and 2-way git sync. **Stay on Lovable through Phase 8** — it removes
   significant operational overhead while building solo. **Migrate to Vercel in Phase 9**
   when you need CI/CD, PR previews, and full infra control.
-- **AI:** Gemini Flash via Supabase edge functions (chat); OpenAI text-embedding-3-small (RAG), Claude 3.x (for reasoning and structured analysis), and a memory provider like Mem0 (planned)
+- **AI:** Gemini Flash via Supabase edge functions (chat)
 
 ### Introduced through the roadmap
 | Tool | Phase | Role |
 |---|---|---|
+| **Perplexity Sonar** | 4.5 | Open-web discovery and search ranked by tag graph |
+| **OpenAI** | 6 | `text-embedding-3-small` for pgvector RAG embeddings |
+| **Claude 3.x** | 8.5+ | Reasoning, structured analysis, and agentic workflows |
+| **Mem0** | 12 | Persistent memory provider for long-term user context |
 | **Cloudflare** | 4 | DNS + CDN + DDoS after buying domain |
 | **PostHog** | 4 | Product analytics — track saves, searches, chat starts |
 | **Sentry** | 4 | Error tracking, especially for import edge functions |
