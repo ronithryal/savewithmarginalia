@@ -3,6 +3,8 @@
 ## Project Overview
 Marginalia (repo: `savewithmarginalia`) is a personal article and quote keeper built with React + TypeScript + Vite + Tailwind + shadcn/ui. It is hosted on Lovable (readmargin.lovable.app) and uses Supabase for database, auth, and edge functions. The Lovable project syncs 2-way with this GitHub repo — any commits pushed to `main` here will be reflected in the Lovable hosted app automatically.
 
+At its core, Marginalia is an executive intelligence engine — effectively a Cursor for PMs and Founder Associates. It operates as a quote-centric knowledge graph rather than a simple bookmarking app, serving as an agent-ready context layer for Claude and GPT. This structure is built to accelerate high-leverage workflows like synthesizing product vision, conducting investment research, and drafting executive briefings.
+
 **Frozen backup:** `ronithryal/marginalia-stable` — do not touch.
 
 ## Tech Stack
