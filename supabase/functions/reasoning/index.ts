@@ -98,16 +98,31 @@ Deno.serve(async (req) => {
 
         // Try multiple model versions in case of account-specific naming restrictions
         const modelVersions = [
-            "claude-3-5-sonnet-20241022", // Sonnet 3.5 v2 (Latest)
-            "claude-3-5-sonnet-20240620", // Sonnet 3.5 v1
-            "claude-3-sonnet-20240229"    // Sonnet 3
+            "claude-3-5-sonnet-latest",       // Alias for latest
+            "claude-3-5-sonnet-20241022",    // Sonnet 3.5 v2
+            "claude-3-5-sonnet-20240620",    // Sonnet 3.5 v1
+            "claude-3-5-haiku-latest",       // Latest Haiku
+            "claude-3-haiku-20240307",       // Standard Haiku
+            "claude-3-sonnet-20240229"       // Original Sonnet 3
         ];
 
         let aiResponse;
         let lastError = "";
 
-        for (const modelName of modelVersions) {
+        for (const rawModelName of modelVersions) {
+            const modelName = rawModelName.trim();
             console.log(`[Reasoning] Attempting fetch with model: ${modelName}`);
+
+            const requestBody = {
+                model: modelName,
+                max_tokens: 2048,
+                system: SYSTEM_PROMPT.trim(),
+                messages: [
+                    { role: "user", content: `Query: ${query || "Analyze my research regarding " + tagName}\n\n${contextStr}` },
+                ],
+                temperature: 0.1,
+            };
+
             aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
                 method: "POST",
                 headers: {
@@ -116,15 +131,7 @@ Deno.serve(async (req) => {
                     "content-type": "application/json",
                     "accept": "application/json",
                 },
-                body: JSON.stringify({
-                    model: modelName,
-                    max_tokens: 2048,
-                    system: SYSTEM_PROMPT,
-                    messages: [
-                        { role: "user", content: `Query: ${query || "Analyze my research regarding " + tagName}\n\n${contextStr}` },
-                    ],
-                    temperature: 0.1,
-                }),
+                body: JSON.stringify(requestBody),
             });
 
             if (aiResponse.ok) break;
