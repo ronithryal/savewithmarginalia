@@ -96,14 +96,14 @@ Deno.serve(async (req) => {
             contextStr += `> Quote: ${q.text}\n\n`;
         }
 
-        // Try multiple model versions in case of account-specific naming restrictions
+        // Update for March 2026: Prioritize Claude 4.6 and 4.5 series
         const modelVersions = [
-            "claude-3-5-sonnet-latest",       // Alias for latest
-            "claude-3-5-sonnet-20241022",    // Sonnet 3.5 v2
-            "claude-3-5-sonnet-20240620",    // Sonnet 3.5 v1
-            "claude-3-5-haiku-latest",       // Latest Haiku
-            "claude-3-haiku-20240307",       // Standard Haiku
-            "claude-3-sonnet-20240229"       // Original Sonnet 3
+            "claude-sonnet-4-6",             // Sonnet 4.6 (Latest)
+            "claude-opus-4-6",               // Opus 4.6
+            "claude-sonnet-4-5",             // Sonnet 4.5
+            "claude-3-5-sonnet-latest",       // 3.5 Alias fallback
+            "claude-3-5-sonnet-20241022",    // 3.5 v2
+            "claude-3-5-haiku-latest"        // 3.5 Haiku
         ];
 
         let aiResponse;
