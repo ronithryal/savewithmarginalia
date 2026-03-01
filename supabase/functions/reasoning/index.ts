@@ -51,39 +51,49 @@ Deno.serve(async (req) => {
         if (userErr || !authUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
         const userId = authUser.id;
 
-        const { query, tagName } = await req.json();
+        const { query, tagName, articleIds: reqArticleIds, quoteIds: reqQuoteIds } = await req.json();
 
         // Debug Log: Check Key Format (DO NOT LOG FULL KEY)
         const keyPrefix = anthropicKey.slice(0, 7);
         console.log(`[Reasoning Debug] Anthropic Key Prefix: ${keyPrefix}... Length: ${anthropicKey.length}`);
 
-        // 1. Get query embedding using OpenAI (standard across Marginalia for pgvector compatibility)
-        const embRes = await fetch("https://api.openai.com/v1/embeddings", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ model: "text-embedding-3-small", input: query || tagName || "latest research" }),
-        });
+        let finalArticleIds = Array.isArray(reqArticleIds) ? reqArticleIds : [];
+        let finalQuoteIds = Array.isArray(reqQuoteIds) ? reqQuoteIds : [];
 
-        if (!embRes.ok) throw new Error("Failed to generate embedding");
-        const embData = await embRes.json();
-        const queryEmbedding = embData.data?.[0]?.embedding;
+        // 1. Perform RAG ONLY if no explicit IDs were provided
+        if (finalArticleIds.length === 0 && finalQuoteIds.length === 0) {
+            const embRes = await fetch("https://api.openai.com/v1/embeddings", {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ model: "text-embedding-3-small", input: query || tagName || "latest research" }),
+            });
 
-        // 2. Perform RAG
-        const { data: matches } = await supabase.rpc("match_content_embeddings", {
-            query_embedding: queryEmbedding,
-            match_user_id: userId,
-            match_count: 12,
-        });
+            if (!embRes.ok) throw new Error("Failed to generate embedding");
+            const embData = await embRes.json();
+            const queryEmbedding = embData.data?.[0]?.embedding;
 
-        const articleIds = matches?.filter((m: any) => m.content_type === "article" && m.similarity > 0.4).map((m: any) => m.content_id) || [];
-        const quoteIds = matches?.filter((m: any) => m.content_type === "quote" && m.similarity > 0.4).map((m: any) => m.content_id) || [];
+            const { data: matches } = await supabase.rpc("match_content_embeddings", {
+                query_embedding: queryEmbedding,
+                match_user_id: userId,
+                match_count: 12,
+            });
+
+            finalArticleIds = matches?.filter((m: any) => m.content_type === "article" && m.similarity > 0.4).map((m: any) => m.content_id) || [];
+            finalQuoteIds = matches?.filter((m: any) => m.content_type === "quote" && m.similarity > 0.4).map((m: any) => m.content_id) || [];
+        }
+
+        if (finalArticleIds.length === 0 && finalQuoteIds.length === 0) {
+            return new Response(JSON.stringify({ result: "It looks like your library context came through empty — no exact items or relevant semantic matches were found for this query." }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+        }
 
         const [{ data: articles }, { data: quotes }] = await Promise.all([
-            articleIds.length > 0
-                ? supabase.from("articles").select("title, content_text, source_domain").in("id", articleIds)
+            finalArticleIds.length > 0
+                ? supabase.from("articles").select("title, content_text, source_domain").in("id", finalArticleIds.slice(0, 15))
                 : Promise.resolve({ data: [] }),
-            quoteIds.length > 0
-                ? supabase.from("quotes").select("text, article_id").in("id", quoteIds)
+            finalQuoteIds.length > 0
+                ? supabase.from("quotes").select("text, article_id").in("id", finalQuoteIds.slice(0, 30))
                 : Promise.resolve({ data: [] }),
         ]);
 

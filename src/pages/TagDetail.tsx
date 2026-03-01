@@ -65,7 +65,11 @@ const TagDetail = () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await supabase.functions.invoke("reasoning", {
-        body: { tagName },
+        body: {
+          tagName,
+          articleIds: articles?.map(a => a.id) || [],
+          quoteIds: quotes?.map(q => q.id) || []
+        },
         headers: { Authorization: `Bearer ${session?.access_token}` },
       });
       if (res.error) throw new Error(res.data?.error ?? res.error.message ?? String(res.error));

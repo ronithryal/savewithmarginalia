@@ -266,6 +266,18 @@ This meta-pivot treats the AI as a staff engineer partner rather than a junior d
 
 ---
 
+### 2026-03-01 — Parallel Retrieval & Solving "Forced Analogies"
+
+**What changed:** Rewrote `chat/index.ts` to fetch internal pgvector RAG matches and live Perplexity Sonar web searches *concurrently* (`Promise.allSettled`). Completely overhauled the AI `SYSTEM_PROMPT` to enforce strict boundaries between these two context streams.
+
+**Why:** The AI was suffering from two core issues:
+1. **Blindness to live events:** Sonar was implemented as a fallback (only firing if the internal library had 0 matches). If the user asked for a live update alongside an internal topic, the AI was completely blind because the fallback was skipped. Concurrent fetching solves this.
+2. **"Forced Analogies" Hallucinations:** The original prompt instructed the AI to "Connect ideas across different saved items." When asked a direct, simple question about one article, the AI would compulsively try to drag in unrelated database hits (like Ethereum or Private Equity) just to fulfill the "connect ideas" behavioral prompt.
+
+**The Fix:** Segmented the data pipeline so the AI receives clearly labeled `[USER'S PRIVATE LIBRARY]` and `[LIVE GLOBAL WEB SEARCH]` blocks. The prompt now explicitly commands the AI to **IGNORE** the private library if the retrieved items don't factually answer the question, eliminating the hallucinated conceptual bridges between unrelated saved items.
+
+---
+
 ### 2026-02-27 — Agent Lessons & Corrections (from sprint)
 
 **RAG "Hallucinated" Analogies & Precision Floor 🎯**

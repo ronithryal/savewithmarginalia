@@ -6,27 +6,22 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `You are a sharp intellectual thinking partner for the user. You have full access to everything they've saved — articles, quotes, tweets, and notes — as your shared context.
+const SYSTEM_PROMPT = `You are a sharp intellectual thinking partner for the user. You have access to the user's private saved library AND live global web context.
 
-Your job is NOT to summarize their library. Your job is to help them THINK:
+Your job is to help them think through their exact question with extreme rigor, using the provided context blocks.
 
-- Connect ideas across different saved items they may not have linked themselves
-- Challenge assumptions surfaced in what they've saved
-- Introduce tension: where do two saved sources disagree or complicate each other?
-- Go beyond their library when useful — bring in real-world context, counterarguments, historical analogies, or adjacent ideas they haven't saved yet
-- Ask one sharp follow-up question at the end of every response to push thinking further
+CRITICAL INSTRUCTIONS ON CONTEXT:
+1. **Prioritize the Private Library**: If the [USER'S PRIVATE LIBRARY] block contains content that directly answers their question or provides their personal perspective, rely on it heavily.
+2. **DO NOT Force Analogies**: Do NOT mention or force a connection to items in their library unless they are genuinely, factually relevant to the specific topic at hand. If the saved context is unrelated to the question, completely IGNORE IT.
+3. **Use the Live Web**: Use the [LIVE GLOBAL WEB SEARCH] block to provide recent updates, ongoing situations, or to fill gaps the personal library doesn't cover. 
+4. **Seamless Blending**: You may weave these sources together naturally without constantly citing them by name, but if you introduce an external global fact, you can note that it's from recent web developments.
 
-Tone: Direct, intellectually confident, conversational. No filler phrases like "Great question!" or "Based on your saved articles...". Just think out loud with them.
-
+Tone: Direct, intellectually confident, conversational. No filler phrases. Just think out loud with them.
 Format your response as flowing prose — no bullet points, no bold headers, no markdown formatting. Write like a smart person talking, not a report generator.
-
-When referencing something from their library, weave it in naturally:
-e.g. "That Garry's List piece you saved makes exactly this point..."
-NOT: "Source: Half the AI Agent Market Is One Category (Garry's List)"
 
 End every response with a single italicized follow-up question.
 
-The user's message is the ONLY question you answer. Do not answer a different question than what was asked, even if the context suggests another angle would be more interesting. If the user asks what to read next, recommend reading. If the user asks about tensions, discuss tensions. Stay strictly on-topic with the exact question asked.
+The user's message is the ONLY question you answer. Do not randomly "Connect ideas" if it distracts from what was asked. Stay strictly on-topic with the exact question asked.
 
 After your main response, on a new line, output exactly this JSON block (and nothing else after it):
 {"followups":["<suggestion 1>","<suggestion 2>"]}
@@ -121,12 +116,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── RAG: semantic retrieval first, keyword fallback if needed ──
+    // ── Parallel Retrieval: RAG and Sonar ──
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    let contextParts: string[] = [];
-    let usedRAG = false;
+    const sonarKey = Deno.env.get("SONAR_API_KEY");
 
-    if (openaiKey) {
+    let libraryContextParts: string[] = [];
+    let webContextParts: string[] = [];
+
+    // 1. Kick off RAG (Internal Library) Promise
+    const ragPromise = async () => {
+      if (!openaiKey) return;
       try {
         const embRes = await fetch("https://api.openai.com/v1/embeddings", {
           method: "POST",
@@ -142,17 +141,30 @@ Deno.serve(async (req) => {
             const { data: matches } = await client.rpc("match_content_embeddings", {
               query_embedding: queryEmbedding,
               match_user_id: userId,
-              match_count: 15, // Increased count to allow for filtering
+              match_count: 15,
             });
 
             if (matches && matches.length > 0) {
               const highQualityMatches = matches.filter((m: any) => m.similarity > 0.5);
 
-              if (highQualityMatches.length > 0) {
-                usedRAG = true;
-                const articleIds = highQualityMatches.filter((m: any) => m.content_type === "article").map((m: any) => m.content_id);
-                const quoteIds = highQualityMatches.filter((m: any) => m.content_type === "quote").map((m: any) => m.content_id);
+              // ── Keyword fallback included in RAG path if similarity is too low ──
+              let articleIds = highQualityMatches.filter((m: any) => m.content_type === "article").map((m: any) => m.content_id);
+              let quoteIds = highQualityMatches.filter((m: any) => m.content_type === "quote").map((m: any) => m.content_id);
 
+              if (articleIds.length === 0 && quoteIds.length === 0) {
+                const keywords = extractKeywords(lastUserMessage);
+                if (keywords.length > 0) {
+                  const articleOrClauses = keywords.flatMap((k) => [`title.ilike.%${k}%`, `content_text.ilike.%${k}%`]).join(",");
+                  const { data: kwArticles } = await client.from("articles").select("id").eq("user_id", userId).or(articleOrClauses).limit(6);
+                  articleIds = (kwArticles || []).map(a => a.id);
+
+                  const quoteOrClauses = keywords.map((k) => `text.ilike.%${k}%`).join(",");
+                  const { data: kwQuotes } = await client.from("quotes").select("id").eq("user_id", userId).or(quoteOrClauses).limit(6);
+                  quoteIds = (kwQuotes || []).map(q => q.id);
+                }
+              }
+
+              if (articleIds.length > 0 || quoteIds.length > 0) {
                 const [{ data: articles }, { data: quotes }] = await Promise.all([
                   articleIds.length > 0
                     ? client.from("articles").select("id, title, content_text, url, source_domain").in("id", articleIds).eq("user_id", userId)
@@ -163,158 +175,147 @@ Deno.serve(async (req) => {
                 ]);
 
                 for (const a of articles || []) {
-                  contextParts.push(`[Saved article] "${a.title}" from ${a.source_domain}\n${(a.content_text || "").slice(0, 500)}`);
+                  libraryContextParts.push(`[Saved article] "${a.title}" from ${a.source_domain}\n${(a.content_text || "").slice(0, 500)}`);
                 }
                 if ((quotes || []).length > 0) {
                   const artIds = [...new Set((quotes as any[]).map((q) => q.article_id))];
                   const { data: arts } = await client.from("articles").select("id, title").in("id", artIds);
                   const artMap = Object.fromEntries((arts || []).map((a: any) => [a.id, a]));
                   for (const q of quotes as any[]) {
-                    contextParts.push(`[Saved quote] "${q.text}" — from "${artMap[q.article_id]?.title || "Unknown"}"`);
+                    libraryContextParts.push(`[Saved quote] "${q.text}" — from "${artMap[q.article_id]?.title || "Unknown"}"`);
                   }
                 }
               }
             }
           }
-        } catch (ragErr) {
-          console.warn("RAG failed, falling back to keyword:", ragErr);
         }
+      } catch (err) {
+        console.warn("RAG/Keyword failed:", err);
       }
+    };
 
-    // ── Keyword fallback ──
-    if (!usedRAG) {
-        const keywords = extractKeywords(lastUserMessage);
-        if (keywords.length > 0) {
-          const articleOrClauses = keywords.flatMap((k) => [`title.ilike.%${k}%`, `content_text.ilike.%${k}%`]).join(",");
-          const { data: articles } = await client.from("articles").select("id, title, content_text, url, source_domain").eq("user_id", userId).or(articleOrClauses).limit(6);
-          for (const a of articles || []) {
-            contextParts.push(`[Saved article] "${a.title}" from ${a.source_domain}\n${(a.content_text || "").slice(0, 400)}`);
-          }
-          const quoteOrClauses = keywords.map((k) => `text.ilike.%${k}%`).join(",");
-          const { data: quotes } = await client.from("quotes").select("id, text, article_id").eq("user_id", userId).or(quoteOrClauses).limit(6);
-          if (quotes && quotes.length > 0) {
-            const artIds = [...new Set(quotes.map((q: any) => q.article_id))];
-            const { data: arts } = await client.from("articles").select("id, title, url").in("id", artIds);
-            const artMap = Object.fromEntries((arts || []).map((a: any) => [a.id, a]));
-            for (const q of quotes) {
-              const art = artMap[q.article_id] || {};
-              contextParts.push(`[Saved quote] "${q.text}" — from "${art.title || "Unknown"}"`);
-            }
-          }
-        }
-      }
+    // 2. Kick off Sonar (Live Web) Promise
+    const sonarPromise = async () => {
+      // Don't waste Sonar tokens on single word greetings
+      if (!sonarKey || extractKeywords(lastUserMessage).length < 2) return;
 
-      // ── Final fallback: Sonar Web Search if still nothing ──
-      if (contextParts.length === 0) {
-        const sonarKey = Deno.env.get("SONAR_API_KEY");
-        if (sonarKey) {
-          try {
-            const sonarRes = await fetch("https://api.perplexity.ai/chat/completions", {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${sonarKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "sonar-pro",
-                messages: [
-                  {
-                    role: "system",
-                    content: "You are a research assistant. Provide a concise, highly informative answer based on live web search. Focus on facts and insights.",
-                  },
-                  { role: "user", content: lastUserMessage },
-                ],
-                temperature: 0.2,
-              }),
-            });
-            if (sonarRes.ok) {
-              const sonarData = await sonarRes.json();
-              const webAnswer = sonarData.choices?.[0]?.message?.content;
-              if (webAnswer) {
-                contextParts.push(`[Web Search Results (via Perplexity Sonar)]\n${webAnswer}\n\nNote to AI: Inform the user explicitly that you didn't find specific saved items in their library for this query, so you performed a live web search to answer their question using Sonar.`);
-              }
-            }
-          } catch (sonarErr) {
-            console.warn("Sonar fallback failed:", sonarErr);
-          }
-        }
-      }
-
-      const contextString =
-        contextParts.length > 0
-          ? `Here is relevant context to help answer the user. If it includes Web Search Results, inform the user you searched the web. Otherwise, it is from their personal library:\n\n${contextParts.join("\n\n")}`
-          : "The user's library has no content matching this query, and web search was unavailable. Use your own knowledge to help them think, and let them know you didn't find relevant saved items.";
-
-      const aiMessages = [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "system", content: contextString },
-        ...conversationMessages,
-      ];
-
-      const aiResponse = await fetch(
-        "https://ai.gateway.lovable.dev/v1/chat/completions",
-        {
+      try {
+        const sonarRes = await fetch("https://api.perplexity.ai/chat/completions", {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${lovableApiKey}`,
+            "Authorization": `Bearer ${sonarKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-3-flash-preview",
-            messages: aiMessages,
-            max_tokens: 1000,
-            temperature: 0.7,
+            model: "sonar-pro",
+            messages: [
+              {
+                role: "system",
+                content: "You are a research assistant. Provide a concise, highly informative summary of the current state of this query based on live web search. Focus on very recent facts and ongoing situations.",
+              },
+              { role: "user", content: lastUserMessage },
+            ],
+            temperature: 0.2,
           }),
-        }
-      );
-
-      if (!aiResponse.ok) {
-        if (aiResponse.status === 429) {
-          return new Response(
-            JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
-            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        if (aiResponse.status === 402) {
-          return new Response(
-            JSON.stringify({ error: "AI usage limit reached. Please add credits." }),
-            { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        const errText = await aiResponse.text();
-        console.error("AI gateway error:", aiResponse.status, errText);
-        return new Response(JSON.stringify({ error: "AI service error" }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
-      }
 
-      const aiData = await aiResponse.json();
-      let rawAnswer = aiData.choices?.[0]?.message?.content || "I couldn't generate a response.";
-
-      // Extract followups JSON from the end of the response
-      let followups: string[] = [];
-      const jsonMatch = rawAnswer.match(/\{"followups":\s*\[.*?\]\s*\}\s*$/s);
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0]);
-          if (Array.isArray(parsed.followups)) {
-            followups = parsed.followups.slice(0, 2);
+        if (sonarRes.ok) {
+          const sonarData = await sonarRes.json();
+          const webAnswer = sonarData.choices?.[0]?.message?.content;
+          if (webAnswer) {
+            webContextParts.push(`[Web Search Results (via Perplexity Sonar)]\n${webAnswer}`);
           }
-        } catch (_e) { /* ignore parse errors */ }
-        rawAnswer = rawAnswer.slice(0, jsonMatch.index).trim();
+        }
+      } catch (err) {
+        console.warn("Sonar web search failed:", err);
       }
+    };
 
-      return new Response(
-        JSON.stringify({ answer: rawAnswer, followups }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    } catch (err) {
-      console.error("chat error:", err);
-      const message = err instanceof Error ? err.message : "Unknown error";
-      return new Response(
-        JSON.stringify({ error: message }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    // 3. Await both context streams concurrently
+    await Promise.allSettled([ragPromise(), sonarPromise()]);
+
+    let builtContext = "";
+
+    if (libraryContextParts.length > 0) {
+      builtContext += `\n\n=== [USER'S PRIVATE LIBRARY] ===\nHere are items specifically saved by the user. Prioritize these if they directly relate to the question. IGNORE THEM ENTIRELY if they are factually unrelated to the question.\n\n${libraryContextParts.join("\n\n")}`;
+    } else {
+      builtContext += `\n\n=== [USER'S PRIVATE LIBRARY] ===\nNo relevant saved items found for this query.`;
     }
-  });
+
+    if (webContextParts.length > 0) {
+      builtContext += `\n\n=== [LIVE GLOBAL WEB SEARCH] ===\nHere is up-to-date global context on the situation. Use this to provide updates, fill gaps, or answer questions outside the user's library.\n\n${webContextParts.join("\n\n")}`;
+    }
+
+    const aiMessages = [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "system", content: `Context blocks for answering the user's query:\n${builtContext}` },
+      ...conversationMessages,
+    ];
+
+    const aiResponse = await fetch(
+      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${lovableApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: aiMessages,
+          max_tokens: 1000,
+          temperature: 0.7,
+        }),
+      }
+    );
+
+    if (!aiResponse.ok) {
+      if (aiResponse.status === 429) {
+        return new Response(
+          JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (aiResponse.status === 402) {
+        return new Response(
+          JSON.stringify({ error: "AI usage limit reached. Please add credits." }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const errText = await aiResponse.text();
+      console.error("AI gateway error:", aiResponse.status, errText);
+      return new Response(JSON.stringify({ error: "AI service error" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const aiData = await aiResponse.json();
+    let rawAnswer = aiData.choices?.[0]?.message?.content || "I couldn't generate a response.";
+
+    // Extract followups JSON from the end of the response
+    let followups: string[] = [];
+    const jsonMatch = rawAnswer.match(/\{"followups":\s*\[.*?\]\s*\}\s*$/s);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed.followups)) {
+          followups = parsed.followups.slice(0, 2);
+        }
+      } catch (_e) { /* ignore parse errors */ }
+      rawAnswer = rawAnswer.slice(0, jsonMatch.index).trim();
+    }
+
+    return new Response(
+      JSON.stringify({ answer: rawAnswer, followups }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    console.error("chat error:", err);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return new Response(
+      JSON.stringify({ error: message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
