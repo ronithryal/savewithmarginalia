@@ -48,15 +48,17 @@
 ---
 
 ### ④ pgvector RAG Upgrade — *~1 hr* ✅
-**What we've done:**
-- `generate-embedding` (support for Webhooks) ✅ (Deployed)
-- **SQL Migration**: Trigger logic at `supabase/migrations/20260227100000_add_embedding_webhooks.sql` 🚀 (Needs Manual Run)
-- **Backfill Script**: Vectorizer at `/tmp/backfill_embeddings.ts` 🚀 (Needs Manual Run)
+- [x] Enable `pgvector` in Supabase.
+- [x] Create `content_embeddings` table and `match_content_embeddings` RPC.
+- [x] Deploy `generate-embedding` (support for Webhooks and explicit UI calls) ✅
+- [x] Resolution of 429 errors (OpenAI billing vs rate limits) ✅
+- [x] Implementation of sequential, rate-limited Sync Button in UI ✅
+- [x] Backfill of historical library into Vector DB ✅
+- [x] Implementation of RAG similarity threshold (>0.5) to prevent hallucinated analogies ✅
+- [x] Sonar Web Search fallback for unanswerable queries ✅
 
 **Remaining work:**
-- **RAG Chat**: Verify `/chat` logic (already supports pgvector via `match_content_embeddings`).
-
-**Memory-Ready**: Retrieval logic now supports multi-session context.
+- [ ] Move background backfill to "On Login" silent process as planned.
 
 ---
 
@@ -70,15 +72,16 @@
 
 ---
 
-### ⑥ MCP & Reasoning (Claude 3.5) — *~1.5 hr* ✅
+### ⑥ MCP & Reasoning (Claude 3.5) — *~1.5 hr* 🏃
 **What we've done:**
 - **Reasoning Function**: `supabase/functions/reasoning` using Claude 3.5 Sonnet ✅ (Deployed)
 - **Inference Layer**: Unified RAG spine used by both Chat and Reasoning functions.
+- **MCP Server**: Added `search` (semantic) tool to `supabase/functions/mcp/index.ts` ✅
 
 **Remaining work:**
-- **MCP Logic**: Implement `listTags`, `listArticlesByTag` in `supabase/functions/mcp/index.ts`.
-- **UI Trigger**: Add "Generate Strategic Brief" button to Tags and Library views.
-- **Executive Proxy Plan**: Design the "What would I do?" proxy logic — how we capture user judgment to store in Mem0 later.
+- [ ] UI Trigger: Add "Generate Strategic Brief" button to Tags detail view (Prompt Prepared).
+- [ ] **X Integration**: Implement X Bookmark Sync & Sonar-X Search augmentation.
+- [ ] Mem0 Integration: Deploy memory persisting user facts (Backend Ready).
 
 ---
 

@@ -142,153 +142,179 @@ Deno.serve(async (req) => {
             const { data: matches } = await client.rpc("match_content_embeddings", {
               query_embedding: queryEmbedding,
               match_user_id: userId,
-              match_count: 8,
+              match_count: 15, // Increased count to allow for filtering
             });
 
             if (matches && matches.length > 0) {
-              usedRAG = true;
-              const articleIds = matches.filter((m: any) => m.content_type === "article").map((m: any) => m.content_id);
-              const quoteIds = matches.filter((m: any) => m.content_type === "quote").map((m: any) => m.content_id);
+              const highQualityMatches = matches.filter((m: any) => m.similarity > 0.5);
 
-              const [{ data: articles }, { data: quotes }] = await Promise.all([
-                articleIds.length > 0
-                  ? client.from("articles").select("id, title, content_text, url, source_domain").in("id", articleIds).eq("user_id", userId)
-                  : Promise.resolve({ data: [] }),
-                quoteIds.length > 0
-                  ? client.from("quotes").select("id, text, article_id").in("id", quoteIds).eq("user_id", userId)
-                  : Promise.resolve({ data: [] }),
-              ]);
+              if (highQualityMatches.length > 0) {
+                usedRAG = true;
+                const articleIds = highQualityMatches.filter((m: any) => m.content_type === "article").map((m: any) => m.content_id);
+                const quoteIds = highQualityMatches.filter((m: any) => m.content_type === "quote").map((m: any) => m.content_id);
 
-              for (const a of articles || []) {
-                contextParts.push(`[Saved article] "${a.title}" from ${a.source_domain}\n${(a.content_text || "").slice(0, 500)}`);
-              }
-              if ((quotes || []).length > 0) {
-                const artIds = [...new Set((quotes as any[]).map((q) => q.article_id))];
-                const { data: arts } = await client.from("articles").select("id, title").in("id", artIds);
-                const artMap = Object.fromEntries((arts || []).map((a: any) => [a.id, a]));
-                for (const q of quotes as any[]) {
-                  contextParts.push(`[Saved quote] "${q.text}" — from "${artMap[q.article_id]?.title || "Unknown"}"`);
+                const [{ data: articles }, { data: quotes }] = await Promise.all([
+                  articleIds.length > 0
+                    ? client.from("articles").select("id, title, content_text, url, source_domain").in("id", articleIds).eq("user_id", userId)
+                    : Promise.resolve({ data: [] }),
+                  quoteIds.length > 0
+                    ? client.from("quotes").select("id, text, article_id").in("id", quoteIds).eq("user_id", userId)
+                    : Promise.resolve({ data: [] }),
+                ]);
+
+                for (const a of articles || []) {
+                  contextParts.push(`[Saved article] "${a.title}" from ${a.source_domain}\n${(a.content_text || "").slice(0, 500)}`);
+                }
+                if ((quotes || []).length > 0) {
+                  const artIds = [...new Set((quotes as any[]).map((q) => q.article_id))];
+                  const { data: arts } = await client.from("articles").select("id, title").in("id", artIds);
+                  const artMap = Object.fromEntries((arts || []).map((a: any) => [a.id, a]));
+                  for (const q of quotes as any[]) {
+                    contextParts.push(`[Saved quote] "${q.text}" — from "${artMap[q.article_id]?.title || "Unknown"}"`);
+                  }
                 }
               }
             }
           }
+        } catch (ragErr) {
+          console.warn("RAG failed, falling back to keyword:", ragErr);
         }
-      } catch (ragErr) {
-        console.warn("RAG failed, falling back to keyword:", ragErr);
       }
-    }
 
     // ── Keyword fallback ──
     if (!usedRAG) {
-      const keywords = extractKeywords(lastUserMessage);
-      if (keywords.length > 0) {
-        const articleOrClauses = keywords.flatMap((k) => [`title.ilike.%${k}%`, `content_text.ilike.%${k}%`]).join(",");
-        const { data: articles } = await client.from("articles").select("id, title, content_text, url, source_domain").eq("user_id", userId).or(articleOrClauses).limit(6);
-        for (const a of articles || []) {
-          contextParts.push(`[Saved article] "${a.title}" from ${a.source_domain}\n${(a.content_text || "").slice(0, 400)}`);
-        }
-        const quoteOrClauses = keywords.map((k) => `text.ilike.%${k}%`).join(",");
-        const { data: quotes } = await client.from("quotes").select("id, text, article_id").eq("user_id", userId).or(quoteOrClauses).limit(6);
-        if (quotes && quotes.length > 0) {
-          const artIds = [...new Set(quotes.map((q: any) => q.article_id))];
-          const { data: arts } = await client.from("articles").select("id, title, url").in("id", artIds);
-          const artMap = Object.fromEntries((arts || []).map((a: any) => [a.id, a]));
-          for (const q of quotes) {
-            const art = artMap[q.article_id] || {};
-            contextParts.push(`[Saved quote] "${q.text}" — from "${art.title || "Unknown"}"`);
+        const keywords = extractKeywords(lastUserMessage);
+        if (keywords.length > 0) {
+          const articleOrClauses = keywords.flatMap((k) => [`title.ilike.%${k}%`, `content_text.ilike.%${k}%`]).join(",");
+          const { data: articles } = await client.from("articles").select("id, title, content_text, url, source_domain").eq("user_id", userId).or(articleOrClauses).limit(6);
+          for (const a of articles || []) {
+            contextParts.push(`[Saved article] "${a.title}" from ${a.source_domain}\n${(a.content_text || "").slice(0, 400)}`);
+          }
+          const quoteOrClauses = keywords.map((k) => `text.ilike.%${k}%`).join(",");
+          const { data: quotes } = await client.from("quotes").select("id, text, article_id").eq("user_id", userId).or(quoteOrClauses).limit(6);
+          if (quotes && quotes.length > 0) {
+            const artIds = [...new Set(quotes.map((q: any) => q.article_id))];
+            const { data: arts } = await client.from("articles").select("id, title, url").in("id", artIds);
+            const artMap = Object.fromEntries((arts || []).map((a: any) => [a.id, a]));
+            for (const q of quotes) {
+              const art = artMap[q.article_id] || {};
+              contextParts.push(`[Saved quote] "${q.text}" — from "${art.title || "Unknown"}"`);
+            }
           }
         }
       }
-    }
 
-    // ── Final fallback: recent articles if still nothing ──
-    if (contextParts.length === 0) {
-      const { data: articles } = await client
-        .from("articles")
-        .select("id, title, content_text, url, source_domain")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(5);
-      for (const a of articles || []) {
-        contextParts.push(`[Saved article] "${a.title}" from ${a.source_domain}\n${(a.content_text || "").slice(0, 400)}`);
-      }
-    }
-
-    const contextString =
-      contextParts.length > 0
-        ? `Here is relevant content from the user's library:\n\n${contextParts.join("\n\n")}`
-        : "The user's library has no content matching this query. Use your own knowledge to help them think, and let them know you didn't find relevant saved items.";
-
-    const aiMessages = [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "system", content: contextString },
-      ...conversationMessages,
-    ];
-
-    const aiResponse = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages: aiMessages,
-          max_tokens: 1000,
-          temperature: 0.7,
-        }),
-      }
-    );
-
-    if (!aiResponse.ok) {
-      if (aiResponse.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (aiResponse.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI usage limit reached. Please add credits." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      const errText = await aiResponse.text();
-      console.error("AI gateway error:", aiResponse.status, errText);
-      return new Response(JSON.stringify({ error: "AI service error" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const aiData = await aiResponse.json();
-    let rawAnswer = aiData.choices?.[0]?.message?.content || "I couldn't generate a response.";
-
-    // Extract followups JSON from the end of the response
-    let followups: string[] = [];
-    const jsonMatch = rawAnswer.match(/\{"followups":\s*\[.*?\]\s*\}\s*$/s);
-    if (jsonMatch) {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (Array.isArray(parsed.followups)) {
-          followups = parsed.followups.slice(0, 2);
+      // ── Final fallback: Sonar Web Search if still nothing ──
+      if (contextParts.length === 0) {
+        const sonarKey = Deno.env.get("SONAR_API_KEY");
+        if (sonarKey) {
+          try {
+            const sonarRes = await fetch("https://api.perplexity.ai/chat/completions", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${sonarKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "sonar-pro",
+                messages: [
+                  {
+                    role: "system",
+                    content: "You are a research assistant. Provide a concise, highly informative answer based on live web search. Focus on facts and insights.",
+                  },
+                  { role: "user", content: lastUserMessage },
+                ],
+                temperature: 0.2,
+              }),
+            });
+            if (sonarRes.ok) {
+              const sonarData = await sonarRes.json();
+              const webAnswer = sonarData.choices?.[0]?.message?.content;
+              if (webAnswer) {
+                contextParts.push(`[Web Search Results (via Perplexity Sonar)]\n${webAnswer}\n\nNote to AI: Inform the user explicitly that you didn't find specific saved items in their library for this query, so you performed a live web search to answer their question using Sonar.`);
+              }
+            }
+          } catch (sonarErr) {
+            console.warn("Sonar fallback failed:", sonarErr);
+          }
         }
-      } catch { /* ignore parse errors */ }
-      rawAnswer = rawAnswer.slice(0, jsonMatch.index).trim();
-    }
+      }
 
-    return new Response(
-      JSON.stringify({ answer: rawAnswer, followups }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  } catch (err) {
-    console.error("chat error:", err);
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return new Response(
-      JSON.stringify({ error: message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-  }
-});
+      const contextString =
+        contextParts.length > 0
+          ? `Here is relevant context to help answer the user. If it includes Web Search Results, inform the user you searched the web. Otherwise, it is from their personal library:\n\n${contextParts.join("\n\n")}`
+          : "The user's library has no content matching this query, and web search was unavailable. Use your own knowledge to help them think, and let them know you didn't find relevant saved items.";
+
+      const aiMessages = [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: contextString },
+        ...conversationMessages,
+      ];
+
+      const aiResponse = await fetch(
+        "https://ai.gateway.lovable.dev/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${lovableApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-3-flash-preview",
+            messages: aiMessages,
+            max_tokens: 1000,
+            temperature: 0.7,
+          }),
+        }
+      );
+
+      if (!aiResponse.ok) {
+        if (aiResponse.status === 429) {
+          return new Response(
+            JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        if (aiResponse.status === 402) {
+          return new Response(
+            JSON.stringify({ error: "AI usage limit reached. Please add credits." }),
+            { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        const errText = await aiResponse.text();
+        console.error("AI gateway error:", aiResponse.status, errText);
+        return new Response(JSON.stringify({ error: "AI service error" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const aiData = await aiResponse.json();
+      let rawAnswer = aiData.choices?.[0]?.message?.content || "I couldn't generate a response.";
+
+      // Extract followups JSON from the end of the response
+      let followups: string[] = [];
+      const jsonMatch = rawAnswer.match(/\{"followups":\s*\[.*?\]\s*\}\s*$/s);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (Array.isArray(parsed.followups)) {
+            followups = parsed.followups.slice(0, 2);
+          }
+        } catch { /* ignore parse errors */ }
+        rawAnswer = rawAnswer.slice(0, jsonMatch.index).trim();
+      }
+
+      return new Response(
+        JSON.stringify({ answer: rawAnswer, followups }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    } catch (err) {
+      console.error("chat error:", err);
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return new Response(
+        JSON.stringify({ error: message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  });

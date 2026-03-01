@@ -264,3 +264,29 @@ This meta-pivot treats the AI as a staff engineer partner rather than a junior d
 
 **The tradeoff:** We sacrifice immediate one-click compatibility with Google's NotebookLM in exchange for earlier access to a persistent, reasoning-capable context layer. This aligns the project more closely with the "Cursor for PMs" vision.
 
+---
+
+### 2026-02-27 — Agent Lessons & Corrections (from sprint)
+
+**RAG "Hallucinated" Analogies & Precision Floor 🎯**
+- **Mistake**: Deploying semantic search without a similarity threshold (`similarity > 0.5`). The system would pull the "least bad" matches (e.g., linking private equity to AI memory) and force the LLM to synthesize them, creating stupid analogies.
+- **Lesson**: RAG needs a precision floor. Over-retrieval is often worse than no retrieval. If the user's library lacks relevant context, it's better to admit ignorance or fall back to an external source than to construct a hallucinated bridge between unrelated concepts.
+- **Action**: Enforce a strict similarity filter on `match_content_embeddings` results and implement a fallback chain: RAG (if high match) → Keyword Search → Sonar Web Search (if library is empty on the topic).
+
+**Lovable Edge Function Deployments**
+- **Mistake**: Attempted to deploy edge functions directly to Supabase via the Supabase Management API and CLI, resulting in 403 errors.
+- **Lesson**: Lovable owns the Supabase organization for auto-provisioned projects. Direct CLI access is inherently blocked. However, the platform can be coerced into "adopting" manual code if prompted to re-create or register specific files.
+- **Action**: Defer infra migration if platform-side workarounds (prompt-engineering for infra) exist. Preserves velocity while sacrificing some control.
+
+**Avoiding "Infra-Heavy" Local Workflows ⚠️**
+- **Mistake**: Repeatedly proposed local terminal `deno run` scripts and SQL triggers that depend on local environment variables like `SUPABASE_SERVICE_ROLE_KEY`.
+- **Lesson**: **NEVER propose local `deno/node` scripts for a Lovable-managed project.** The only valid approaches are: (1) SQL queries in Lovable's SQL Editor, (2) Lovable prompts that build UI-native tools (buttons in Settings), or (3) edge function calls triggered from within the running app itself.
+
+**OpenAI 429 Errors from Zero Balance ⚠️**
+- **Mistake**: Spent significant time debugging 429 rate-limit errors and adding aggressive backoff logic when the real issue was a $0 OpenAI account balance.
+- **Lesson**: A 429 from OpenAI can mean **rate limit** (too many requests) OR **insufficient quota** (zero balance). If the OpenAI dashboard shows **0 API activity**, it's always a billing issue, not a rate issue. The error body will contain `"insufficient_quota"`.
+
+**Strategic Brief / Claude via Lovable API Gateway 🔑**
+- **Dependency**: The `reasoning` edge function calls Claude 3.5 Sonnet via `https://ai.gateway.lovable.dev` using `LOVABLE_API_KEY`, not a direct Anthropic key.
+- **Migration Risk**: This key is Lovable-managed and will be invalid after migrating off Lovable. When migrating, replace the gateway URL and auth header with a direct Anthropic API key.
+

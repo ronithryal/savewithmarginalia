@@ -18,6 +18,7 @@ A running record of debt intentionally acquired to preserve development velocity
 | Debt Item | Risk | Mitigation | Date |
 |---|---|---|---|
 | **Manual Embeddings Backfill** | New articles don't auto-embed without client-side trigger. | Hook `generate-embedding` to DB trigger later. | 2026-02-27 |
+| **Claude via LOVABLE_API_KEY** | `reasoning` function uses Lovable's AI Gateway, not a direct Anthropic key. Will break on migration. | Replace with `ANTHROPIC_API_KEY` + `api.anthropic.com` endpoint when migrating off Lovable. | 2026-02-27 |
 | **Missing Domain/CDN** | Standard Lovable URL. No custom caching headers. | Defer until distribution phase. | 2026-02-27 |
 
 ### Observability
