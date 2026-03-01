@@ -96,54 +96,49 @@ Deno.serve(async (req) => {
             contextStr += `> Quote: ${q.text}\n\n`;
         }
 
-        const modelName = "claude-3-5-sonnet-20241022";
-        const endpoint = "https://api.anthropic.com/v1/messages";
+        // Try multiple model versions in case of account-specific naming restrictions
+        const modelVersions = [
+            "claude-3-5-sonnet-20241022", // Sonnet 3.5 v2 (Latest)
+            "claude-3-5-sonnet-20240620", // Sonnet 3.5 v1
+            "claude-3-sonnet-20240229"    // Sonnet 3
+        ];
 
-        console.log(`[Reasoning Debug] Fetching from ${endpoint} using model ${modelName}`);
+        let aiResponse;
+        let lastError = "";
 
-        // 4. Call Claude 3.5 Sonnet directly via Anthropic API
-        const aiResponse = await fetch(endpoint, {
-            method: "POST",
-            headers: {
-                "x-api-key": anthropicKey.trim(),
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-                "accept": "application/json",
-            },
-            body: JSON.stringify({
-                model: modelName,
-                max_tokens: 2048,
-                system: SYSTEM_PROMPT,
-                messages: [
-                    { role: "user", content: `Query: ${query || "Analyze my research regarding " + tagName}\n\n${contextStr}` },
-                ],
-                temperature: 0.1,
-            }),
-        });
+        for (const modelName of modelVersions) {
+            console.log(`[Reasoning] Attempting fetch with model: ${modelName}`);
+            aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: {
+                    "x-api-key": anthropicKey.trim(),
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                    "accept": "application/json",
+                },
+                body: JSON.stringify({
+                    model: modelName,
+                    max_tokens: 2048,
+                    system: SYSTEM_PROMPT,
+                    messages: [
+                        { role: "user", content: `Query: ${query || "Analyze my research regarding " + tagName}\n\n${contextStr}` },
+                    ],
+                    temperature: 0.1,
+                }),
+            });
 
-        if (!aiResponse.ok) {
+            if (aiResponse.ok) break;
+
             const errText = await aiResponse.text();
-            console.error(`[Reasoning Error] Status: ${aiResponse.status} Body: ${errText}`);
+            lastError = `Model ${modelName} failed (${aiResponse.status}): ${errText}`;
+            console.warn(lastError);
 
-            // If it's a 404 and we're using the versioned name, maybe try the latest?
-            let errorMessage = `Anthropic service error: ${aiResponse.status}`;
-            if (errText) {
-                try {
-                    const errJson = JSON.parse(errText);
-                    errorMessage += ` - ${errJson.error?.message || errText}`;
-                } catch {
-                    errorMessage += ` - ${errText.slice(0, 200)}`;
-                }
-            } else {
-                errorMessage += " - No response body returned from Anthropic.";
-            }
+            // If it's not a 404 or 400 (model issue), don't bother retrying with other models
+            if (aiResponse.status !== 404 && aiResponse.status !== 400) break;
+        }
 
-            // Fallback hint for 404
-            if (aiResponse.status === 404) {
-                errorMessage += " (Clue: This usually means the endpoint URL or Model Name is invalid for this key.)";
-            }
-
-            throw new Error(errorMessage);
+        if (!aiResponse || !aiResponse.ok) {
+            throw new Error(`Anthropic Error: ${lastError || "All models failed"}`);
         }
 
         const aiData = await aiResponse.json();
