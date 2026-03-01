@@ -274,7 +274,14 @@ const TagDetail = () => {
             <Sparkles className="h-3.5 w-3.5" />
             {sonarLoading ? "Searching…" : "Find more"}
           </button>
-          {/* Brief button temporarily hidden while fixes are in progress */}
+          <button
+            onClick={handleGenerateBrief}
+            disabled={briefLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-50"
+          >
+            <Zap className="h-3.5 w-3.5" />
+            {briefLoading ? "Generating…" : "Brief"}
+          </button>
         </div>
       </div>
       <p className="text-sm text-muted-foreground mb-8">
