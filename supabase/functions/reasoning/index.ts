@@ -53,6 +53,10 @@ Deno.serve(async (req) => {
 
         const { query, tagName } = await req.json();
 
+        // Debug Log: Check Key Format (DO NOT LOG FULL KEY)
+        const keyPrefix = anthropicKey.slice(0, 7);
+        console.log(`[Reasoning Debug] Anthropic Key Prefix: ${keyPrefix}... Length: ${anthropicKey.length}`);
+
         // 1. Get query embedding using OpenAI (standard across Marginalia for pgvector compatibility)
         const embRes = await fetch("https://api.openai.com/v1/embeddings", {
             method: "POST",
@@ -92,35 +96,53 @@ Deno.serve(async (req) => {
             contextStr += `> Quote: ${q.text}\n\n`;
         }
 
+        const modelName = "claude-3-5-sonnet-20241022";
+        const endpoint = "https://api.anthropic.com/v1/messages";
+
+        console.log(`[Reasoning Debug] Fetching from ${endpoint} using model ${modelName}`);
+
         // 4. Call Claude 3.5 Sonnet directly via Anthropic API
-        const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
+        const aiResponse = await fetch(endpoint, {
             method: "POST",
             headers: {
-                "x-api-key": anthropicKey,
+                "x-api-key": anthropicKey.trim(),
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
+                "accept": "application/json",
             },
             body: JSON.stringify({
-                model: "claude-3-5-sonnet-20241022",
-                max_tokens: 2000,
+                model: modelName,
+                max_tokens: 2048,
                 system: SYSTEM_PROMPT,
                 messages: [
                     { role: "user", content: `Query: ${query || "Analyze my research regarding " + tagName}\n\n${contextStr}` },
                 ],
-                temperature: 0.3,
+                temperature: 0.1,
             }),
         });
 
         if (!aiResponse.ok) {
             const errText = await aiResponse.text();
-            console.error("Anthropic call failed:", aiResponse.status, errText);
+            console.error(`[Reasoning Error] Status: ${aiResponse.status} Body: ${errText}`);
+
+            // If it's a 404 and we're using the versioned name, maybe try the latest?
             let errorMessage = `Anthropic service error: ${aiResponse.status}`;
-            try {
-                const errJson = JSON.parse(errText);
-                if (errJson.error?.message) errorMessage += ` - ${errJson.error.message}`;
-            } catch {
-                errorMessage += ` - ${errText.slice(0, 100)}`;
+            if (errText) {
+                try {
+                    const errJson = JSON.parse(errText);
+                    errorMessage += ` - ${errJson.error?.message || errText}`;
+                } catch {
+                    errorMessage += ` - ${errText.slice(0, 200)}`;
+                }
+            } else {
+                errorMessage += " - No response body returned from Anthropic.";
             }
+
+            // Fallback hint for 404
+            if (aiResponse.status === 404) {
+                errorMessage += " (Clue: This usually means the endpoint URL or Model Name is invalid for this key.)";
+            }
+
             throw new Error(errorMessage);
         }
 
