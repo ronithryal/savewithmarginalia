@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
                 "content-type": "application/json",
             },
             body: JSON.stringify({
-                model: "claude-3-5-sonnet-20240620",
+                model: "claude-3-5-sonnet-20241022",
                 max_tokens: 2000,
                 system: SYSTEM_PROMPT,
                 messages: [
@@ -112,9 +112,16 @@ Deno.serve(async (req) => {
         });
 
         if (!aiResponse.ok) {
-            const err = await aiResponse.text();
-            console.error("Anthropic call failed:", err);
-            throw new Error(`Anthropic service error: ${aiResponse.status}`);
+            const errText = await aiResponse.text();
+            console.error("Anthropic call failed:", aiResponse.status, errText);
+            let errorMessage = `Anthropic service error: ${aiResponse.status}`;
+            try {
+                const errJson = JSON.parse(errText);
+                if (errJson.error?.message) errorMessage += ` - ${errJson.error.message}`;
+            } catch {
+                errorMessage += ` - ${errText.slice(0, 100)}`;
+            }
+            throw new Error(errorMessage);
         }
 
         const aiData = await aiResponse.json();
