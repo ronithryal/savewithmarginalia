@@ -301,7 +301,7 @@ Deno.serve(async (req) => {
           if (Array.isArray(parsed.followups)) {
             followups = parsed.followups.slice(0, 2);
           }
-        } catch { /* ignore parse errors */ }
+        } catch (_e) { /* ignore parse errors */ }
         rawAnswer = rawAnswer.slice(0, jsonMatch.index).trim();
       }
 
