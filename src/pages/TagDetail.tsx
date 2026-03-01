@@ -3,7 +3,7 @@ import { useParams, Link, useSearchParams, useNavigate } from "react-router-dom"
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, BookOpen, Sparkles, X } from "lucide-react";
+import { ArrowLeft, BookOpen, Sparkles, X, Zap, ChevronDown, ChevronUp } from "lucide-react";
 import { toast } from "sonner";
 import ArticleCard from "@/components/ArticleCard";
 import QuoteCard from "@/components/QuoteCard";
@@ -24,6 +24,9 @@ const TagDetail = () => {
   const [exporting, setExporting] = useState(false);
   const [sonarResults, setSonarResults] = useState<{ title: string; url: string; description: string; domain: string }[]>([]);
   const [sonarLoading, setSonarLoading] = useState(false);
+  const [brief, setBrief] = useState<string | null>(null);
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [showBrief, setShowBrief] = useState(true);
 
   const handleFindMore = async () => {
     if (!tag) return;
@@ -54,17 +57,24 @@ const TagDetail = () => {
     }
   };
 
-  const handleExportNotebookLM = async () => {
-    if (!tag || !articles || !quotes) return;
-    setExporting(true);
+  const handleGenerateBrief = async () => {
+    if (!tag) return;
+    setBriefLoading(true);
+    setBrief(null);
+    setShowBrief(true);
     try {
-      const markdown = formatNotebookLMExport(tagName, articles, quotes as any[]);
-      await copyAndOpenNotebookLM(markdown);
-      toast.success("Copied to clipboard — paste into NotebookLM as a new source");
-    } catch {
-      toast.error("Export failed — please try again");
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await supabase.functions.invoke("reasoning", {
+        body: { tagName },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (res.error) throw new Error(res.data?.error ?? res.error.message ?? String(res.error));
+      setBrief(res.data?.result ?? "No brief generated");
+      toast.success("Strategic brief generated");
+    } catch (err: any) {
+      toast.error(err?.message ?? "Brief generation failed");
     } finally {
-      setExporting(false);
+      setBriefLoading(false);
     }
   };
 
@@ -261,13 +271,13 @@ const TagDetail = () => {
             {sonarLoading ? "Searching…" : "Find more"}
           </button>
           <button
-            onClick={handleExportNotebookLM}
-            disabled={exporting || !articles?.length}
+            onClick={handleGenerateBrief}
+            disabled={briefLoading || !articles?.length}
             className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-            title="Export to NotebookLM"
+            title="Generate Strategic Brief"
           >
-            <BookOpen className="h-3.5 w-3.5" />
-            {exporting ? "Exporting…" : "Export →"}
+            <Zap className="h-3.5 w-3.5" />
+            {briefLoading ? "Generating…" : "Brief"}
           </button>
         </div>
       </div>
@@ -275,6 +285,70 @@ const TagDetail = () => {
         {ac} {ac === 1 ? "article" : "articles"} · {qc} {qc === 1 ? "quote" : "quotes"}
         {tc > 0 && ` · ${tc} ${tc === 1 ? "thread" : "threads"}`}
       </p>
+
+      {/* Strategic Brief Display */}
+      {(brief || briefLoading) && (
+        <div className="mb-8 border border-accent/20 rounded-xl overflow-hidden bg-accent/5 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-accent/10 bg-accent/10">
+            <h3 className="text-sm font-semibold text-accent flex items-center gap-2">
+              <Zap className="h-4 w-4 fill-accent" /> Strategic Brief
+            </h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={async () => {
+                  if (brief) {
+                    await navigator.clipboard.writeText(brief);
+                    toast.success("Brief copied to clipboard");
+                  }
+                }}
+                className="p-1 hover:bg-black/5 rounded-md transition-colors"
+                title="Copy markdown to clipboard"
+              >
+                <BookOpen className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setShowBrief(!showBrief)}
+                className="p-1 hover:bg-black/5 rounded-md transition-colors"
+              >
+                {showBrief ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </button>
+              <button
+                onClick={() => setBrief(null)}
+                className="p-1 hover:bg-black/5 rounded-md transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {showBrief && (
+            <div className="p-6">
+              {briefLoading ? (
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-4 bg-accent/10 rounded w-3/4" />
+                  <div className="h-4 bg-accent/10 rounded w-full" />
+                  <div className="h-4 bg-accent/10 rounded w-5/6" />
+                </div>
+              ) : (
+                <div className="prose prose-sm prose-accent dark:prose-invert max-w-none">
+                  {/* Since we don't have react-markdown, we'll use a simple formatter for now */}
+                  <div
+                    className="whitespace-pre-wrap leading-relaxed text-foreground/90 font-sans"
+                    dangerouslySetInnerHTML={{
+                      __html: (brief || "")
+                        .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mb-4 mt-2">$1</h1>')
+                        .replace(/^## (.*$)/gim, '<h2 class="text-xl font-bold mb-3 mt-6 border-b border-border pb-1">$1</h2>')
+                        .replace(/^### (.*$)/gim, '<h3 class="text-lg font-semibold mb-2 mt-4">$1</h3>')
+                        .replace(/^\> (.*$)/gim, '<blockquote class="border-l-4 border-accent pl-4 italic my-4">$1</blockquote>')
+                        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Sonar results */}
       {sonarResults.length > 0 && (

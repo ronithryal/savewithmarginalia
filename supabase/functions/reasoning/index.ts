@@ -15,7 +15,7 @@ When provided with context from their library, you should perform:
 3. **Strategic Risks**: What are the gaps or contradictions in this current line of thinking?
 
 Tone: Professional, direct, and intellectually rigorous. Avoid fluff.
-Format: Use valid Markdown with clear headings.`;
+Format: Use valid Markdown with clear headings. Do not use bold for headers, use proper # and ## markdown.`;
 
 Deno.serve(async (req) => {
     if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -28,11 +28,18 @@ Deno.serve(async (req) => {
 
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
         const openaiKey = Deno.env.get("OPENAI_API_KEY");
+        const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
 
-        if (!lovableApiKey || !openaiKey) {
-            return new Response(JSON.stringify({ error: "Required API keys (LOVABLE, OPENAI) not configured" }), {
+        if (!anthropicKey) {
+            return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY not configured. Please add it to Supabase secrets." }), {
+                status: 500,
+                headers: corsHeaders,
+            });
+        }
+
+        if (!openaiKey) {
+            return new Response(JSON.stringify({ error: "OPENAI_API_KEY not configured (required for RAG embeddings)" }), {
                 status: 500,
                 headers: corsHeaders,
             });
@@ -46,7 +53,7 @@ Deno.serve(async (req) => {
 
         const { query, tagName } = await req.json();
 
-        // 1. Get query embedding
+        // 1. Get query embedding using OpenAI (standard across Marginalia for pgvector compatibility)
         const embRes = await fetch("https://api.openai.com/v1/embeddings", {
             method: "POST",
             headers: { "Authorization": `Bearer ${openaiKey}`, "Content-Type": "application/json" },
@@ -61,11 +68,11 @@ Deno.serve(async (req) => {
         const { data: matches } = await supabase.rpc("match_content_embeddings", {
             query_embedding: queryEmbedding,
             match_user_id: userId,
-            match_count: 10,
+            match_count: 12,
         });
 
-        const articleIds = matches?.filter((m: any) => m.content_type === "article").map((m: any) => m.content_id) || [];
-        const quoteIds = matches?.filter((m: any) => m.content_type === "quote").map((m: any) => m.content_id) || [];
+        const articleIds = matches?.filter((m: any) => m.content_type === "article" && m.similarity > 0.4).map((m: any) => m.content_id) || [];
+        const quoteIds = matches?.filter((m: any) => m.content_type === "quote" && m.similarity > 0.4).map((m: any) => m.content_id) || [];
 
         const [{ data: articles }, { data: quotes }] = await Promise.all([
             articleIds.length > 0
@@ -79,23 +86,25 @@ Deno.serve(async (req) => {
         // 3. Build Context
         let contextStr = "Context from User's Library:\n\n";
         for (const a of articles || []) {
-            contextStr += `### Article: ${a.title} (${a.source_domain})\n${(a.content_text || "").slice(0, 800)}\n\n`;
+            contextStr += `### Article: ${a.title} (${a.source_domain})\n${(a.content_text || "").slice(0, 1000)}\n\n`;
         }
         for (const q of quotes || []) {
             contextStr += `> Quote: ${q.text}\n\n`;
         }
 
-        // 4. Call Claude 3.5 Sonnet via Lovable AI Gateway
-        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        // 4. Call Claude 3.5 Sonnet directly via Anthropic API
+        const aiResponse = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: {
-                Authorization: `Bearer ${lovableApiKey}`,
-                "Content-Type": "application/json",
+                "x-api-key": anthropicKey,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
             },
             body: JSON.stringify({
-                model: "anthropic/claude-3-5-sonnet-20240620",
+                model: "claude-3-5-sonnet-20240620",
+                max_tokens: 2000,
+                system: SYSTEM_PROMPT,
                 messages: [
-                    { role: "system", content: SYSTEM_PROMPT },
                     { role: "user", content: `Query: ${query || "Analyze my research regarding " + tagName}\n\n${contextStr}` },
                 ],
                 temperature: 0.3,
@@ -104,12 +113,12 @@ Deno.serve(async (req) => {
 
         if (!aiResponse.ok) {
             const err = await aiResponse.text();
-            console.error("Claude call failed:", err);
-            throw new Error(`AI service error: ${aiResponse.status}`);
+            console.error("Anthropic call failed:", err);
+            throw new Error(`Anthropic service error: ${aiResponse.status}`);
         }
 
         const aiData = await aiResponse.json();
-        const result = aiData.choices?.[0]?.message?.content;
+        const result = aiData.content?.[0]?.text;
 
         return new Response(JSON.stringify({ result }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },

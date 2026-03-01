@@ -62,11 +62,10 @@
 
 ---
 
-### ⑤ Strategic Brief Generator — *~1 hr*
-**What to build:**
-- **Brief Logic**: Create a mode in `/chat` or a new edge function that synthesizes saved content (from RAG) into a high-level "Strategic Brief".
-- **Synthesis**: Uses Claude 3.5 to group items by "Insight", "Risk", and "Action Item".
-- **Clipboard Export**: Copy formatted MD to clipboard (reusing the logic intended for NotebookLM, but for general executive use).
+- **Brief Logic**: Create a mode in `/chat` or a new edge function that synthesizes saved content (from RAG) into a high-level "Strategic Brief". ✅
+- **Synthesis**: Uses Claude 3.5 to group items by "Insight", "Risk", and "Action Item". ✅
+- **UI Integration**: Added "Brief" button to TagDetail and ArticleDetail pages. ✅
+- **Clipboard Export**: Copy formatted MD to clipboard logic implemented. ✅
 
 **High-leverage output**: This provides immediate value for founders and PMs regardless of their target tool.
 
@@ -79,9 +78,10 @@
 - **MCP Server**: Added `search` (semantic) tool to `supabase/functions/mcp/index.ts` ✅
 
 **Remaining work:**
-- [ ] UI Trigger: Add "Generate Strategic Brief" button to Tags detail view (Prompt Prepared).
-- [ ] **X Integration**: Implement X Bookmark Sync & Sonar-X Search augmentation.
-- [ ] Mem0 Integration: Deploy memory persisting user facts (Backend Ready).
+- [x] UI Trigger: Added "Create Brief" button to Tags and Article views. ✅
+- [x] **X Integration**: Implement X Bookmark Sync & Sonar-X Search augmentation.
+- [x] Mem0 Integration: Deploy memory persisting user facts (Backend Ready).
+- [x] **Claude Integration**: Rewrote reasoning function for direct Anthropic API support. ✅
 
 ---
 
