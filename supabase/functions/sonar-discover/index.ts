@@ -33,7 +33,7 @@ serve(async (req) => {
             ? `\n\nContext: the user has recently saved these articles about this topic:\n${recentTitles.slice(0, 5).map((t: string) => `- ${t}`).join("\n")}`
             : "";
 
-        const query = `Find 5 high-quality recent articles, essays, or resources about "${tagName}" that are worth reading. Return a JSON array with objects having: title, url, description (1-2 sentences), domain.${titlesContext}`;
+        const query = `Find 10 high-quality, extremely recent articles, essays, breaking developments, or unique perspectives about "${tagName}". Focus exclusively on things happening right now or very recently. You MUST provide a highly diverse mix of sources: include traditional breaking news, unique non-traditional analysis (like Substack or independent blogs), AND high-quality industry macro-reports. Do not over-index on just one type of source. Return a JSON array with objects having: title, url, description (1-2 sentences), domain.${titlesContext}`;
 
         const sonarRes = await fetch("https://api.perplexity.ai/chat/completions", {
             method: "POST",
@@ -46,7 +46,7 @@ serve(async (req) => {
                 messages: [
                     {
                         role: "system",
-                        content: "You are a research assistant. Always respond with valid JSON only, no markdown, no explanation. Return a JSON array of exactly 5 objects with fields: title (string), url (string), description (string), domain (string).",
+                        content: "You are a real-time discovery engine. You MUST cast a wide net to provide a diverse mix of recent events, independent analysis (e.g., Substack), and high-quality industry reports. Always respond with valid JSON only, no markdown, no explanation. Return a JSON array of exactly 10 objects with fields: title (string), url (string), description (string), domain (string).",
                     },
                     { role: "user", content: query },
                 ],
