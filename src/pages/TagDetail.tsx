@@ -27,6 +27,8 @@ const TagDetail = () => {
   const [brief, setBrief] = useState<string | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
   const [showBrief, setShowBrief] = useState(true);
+  const [savingUrls, setSavingUrls] = useState<Set<string>>(new Set());
+  const [savedUrls, setSavedUrls] = useState<Set<string>>(new Set());
 
   const handleFindMore = async () => {
     if (!tag) return;
@@ -49,14 +51,36 @@ const TagDetail = () => {
   };
 
   const handleSaveFromSonar = async (url: string, title: string) => {
+    if (savingUrls.has(url) || savedUrls.has(url)) return;
+
+    setSavingUrls((prev) => new Set(prev).add(url));
     try {
       const res = await supabase.functions.invoke("bookmarklet-save", {
         body: { type: "article", url, title }
       });
       if (res.error) throw new Error(res.error.message);
+
+      const newArticleId = res.data?.article_id;
+      if (newArticleId && tag) {
+        // Automatically apply the current tag to this new article
+        await supabase.from("article_tags").insert({
+          article_id: newArticleId,
+          tag_id: tag.id
+        });
+        // Invalidate the query to immediately show the new article in the feed
+        queryClient.invalidateQueries({ queryKey: ["tag-articles", tag.id] });
+      }
+
+      setSavedUrls((prev) => new Set(prev).add(url));
       toast.success("Saved to your library");
     } catch (err: any) {
       toast.error(err.message || "Failed to save");
+    } finally {
+      setSavingUrls((prev) => {
+        const next = new Set(prev);
+        next.delete(url);
+        return next;
+      });
     }
   };
 
@@ -390,8 +414,16 @@ const TagDetail = () => {
                 </div>
                 <button
                   onClick={() => handleSaveFromSonar(r.url, r.title)}
-                  className="flex-shrink-0 text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:opacity-90 transition-opacity"
-                >Save</button>
+                  disabled={savingUrls.has(r.url) || savedUrls.has(r.url)}
+                  className={`flex-shrink-0 text-xs px-2 py-1 rounded transition-colors ${savedUrls.has(r.url)
+                      ? "bg-muted text-muted-foreground cursor-not-allowed"
+                      : savingUrls.has(r.url)
+                        ? "bg-primary/70 text-primary-foreground cursor-wait"
+                        : "bg-primary text-primary-foreground hover:opacity-90"
+                    }`}
+                >
+                  {savedUrls.has(r.url) ? "Saved ✓" : savingUrls.has(r.url) ? "Saving…" : "Save"}
+                </button>
               </div>
             ))}
           </div>
