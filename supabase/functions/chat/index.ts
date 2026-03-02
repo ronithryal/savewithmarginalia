@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
             messages: [
               {
                 role: "system",
-                content: "You are a research assistant. Provide a concise, highly informative summary of the current state of this query based on live web search. Focus on very recent facts and ongoing situations.",
+                content: "You are a timeline-focused research assistant. You MUST prioritize the absolute latest, most recent developments, official corporate responses, statements, and fallout that occurred AFTER the original event in the query. Provide a concise, highly informative summary focusing heavily on real-time chronological updates.",
               },
               { role: "user", content: lastUserMessage },
             ],

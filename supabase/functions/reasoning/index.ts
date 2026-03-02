@@ -90,10 +90,10 @@ Deno.serve(async (req) => {
 
         const [{ data: articles }, { data: quotes }] = await Promise.all([
             finalArticleIds.length > 0
-                ? supabase.from("articles").select("title, content_text, source_domain").in("id", finalArticleIds.slice(0, 15))
+                ? supabase.from("articles").select("title, content_text, source_domain").in("id", finalArticleIds.slice(0, 15)).eq("user_id", userId)
                 : Promise.resolve({ data: [] }),
             finalQuoteIds.length > 0
-                ? supabase.from("quotes").select("text, article_id").in("id", finalQuoteIds.slice(0, 30))
+                ? supabase.from("quotes").select("text, article_id").in("id", finalQuoteIds.slice(0, 30)).eq("user_id", userId)
                 : Promise.resolve({ data: [] }),
         ]);
 

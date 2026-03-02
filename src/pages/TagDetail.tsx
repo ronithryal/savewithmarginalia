@@ -62,13 +62,18 @@ const TagDetail = () => {
     setBriefLoading(true);
     setBrief(null);
     setShowBrief(true);
+
+    // Only pass what is explicitly visible in the current feed filter
+    const visibleArticleIds = feed.filter(f => f.type === "article").map(f => f.data.id);
+    const visibleQuoteIds = feed.filter(f => f.type === "quote").map(f => f.data.id);
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await supabase.functions.invoke("reasoning", {
         body: {
           tagName,
-          articleIds: articles?.map(a => a.id) || [],
-          quoteIds: quotes?.map(q => q.id) || []
+          articleIds: visibleArticleIds,
+          quoteIds: visibleQuoteIds
         },
         headers: { Authorization: `Bearer ${session?.access_token}` },
       });
@@ -274,7 +279,15 @@ const TagDetail = () => {
             <Sparkles className="h-3.5 w-3.5" />
             {sonarLoading ? "Searching…" : "Find more"}
           </button>
-          {/* Brief button temporarily hidden */}
+          <button
+            onClick={handleGenerateBrief}
+            disabled={briefLoading}
+            className="flex items-center gap-1.5 text-xs text-accent hover:text-accent/80 transition-colors disabled:opacity-40"
+            title="Generate Brief"
+          >
+            <Zap className="h-3.5 w-3.5" />
+            {briefLoading ? "Generating…" : "Brief"}
+          </button>
         </div>
       </div>
       <p className="text-sm text-muted-foreground mb-8">
@@ -361,7 +374,14 @@ const TagDetail = () => {
             {sonarResults.map((r, i) => (
               <div key={i} className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{r.title}</p>
+                  <a
+                    href={r.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium text-foreground truncate hover:underline block"
+                  >
+                    {r.title}
+                  </a>
                   <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{r.description}</p>
                   <p className="text-xs text-accent mt-0.5">{r.domain}</p>
                 </div>
