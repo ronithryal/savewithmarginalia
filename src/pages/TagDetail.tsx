@@ -48,12 +48,15 @@ const TagDetail = () => {
     }
   };
 
-  const handleSaveFromSonar = async (url: string) => {
+  const handleSaveFromSonar = async (url: string, title: string) => {
     try {
-      await supabase.functions.invoke("bookmarklet-save", { body: { url } });
+      const res = await supabase.functions.invoke("bookmarklet-save", {
+        body: { type: "article", url, title }
+      });
+      if (res.error) throw new Error(res.error.message);
       toast.success("Saved to your library");
-    } catch {
-      toast.error("Failed to save");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save");
     }
   };
 
@@ -386,7 +389,7 @@ const TagDetail = () => {
                   <p className="text-xs text-accent mt-0.5">{r.domain}</p>
                 </div>
                 <button
-                  onClick={() => handleSaveFromSonar(r.url)}
+                  onClick={() => handleSaveFromSonar(r.url, r.title)}
                   className="flex-shrink-0 text-xs bg-primary text-primary-foreground px-2 py-1 rounded hover:opacity-90 transition-opacity"
                 >Save</button>
               </div>
