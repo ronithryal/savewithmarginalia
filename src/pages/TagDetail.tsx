@@ -29,10 +29,12 @@ const TagDetail = () => {
   const [showBrief, setShowBrief] = useState(true);
   const [savingUrls, setSavingUrls] = useState<Set<string>>(new Set());
   const [savedUrls, setSavedUrls] = useState<Set<string>>(new Set());
+  const [sonarOpen, setSonarOpen] = useState(false);
 
   const handleFindMore = async () => {
     if (!tag) return;
     setSonarLoading(true);
+    setSonarOpen(true);
     try {
       const recentTitles = (articles ?? []).slice(0, 5).map((a: any) => a.title);
       const { data: { session } } = await supabase.auth.getSession();
@@ -300,11 +302,11 @@ const TagDetail = () => {
           <button
             onClick={handleFindMore}
             disabled={sonarLoading}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-            title="Find more with Sonar"
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-40 font-medium"
+            title="Find more articles about this topic with Sonar"
           >
             <Sparkles className="h-3.5 w-3.5" />
-            {sonarLoading ? "Searching…" : "Find more"}
+            {sonarLoading ? "Searching…" : `Find more about #${tagName}`}
           </button>
           <button
             onClick={handleGenerateBrief}
@@ -386,46 +388,81 @@ const TagDetail = () => {
         </div>
       )}
 
-      {/* Sonar results */}
-      {sonarResults.length > 0 && (
-        <div className="mb-6 border border-border rounded-lg p-4 bg-muted/30">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles className="h-3 w-3" /> Suggested by Sonar
-            </p>
-            <button onClick={() => setSonarResults([])} className="text-muted-foreground hover:text-foreground">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <div className="space-y-3">
-            {sonarResults.map((r, i) => (
-              <div key={i} className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <a
-                    href={r.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm font-medium text-foreground truncate hover:underline block"
-                  >
-                    {r.title}
-                  </a>
-                  <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{r.description}</p>
-                  <p className="text-xs text-accent mt-0.5">{r.domain}</p>
-                </div>
-                <button
-                  onClick={() => handleSaveFromSonar(r.url, r.title)}
-                  disabled={savingUrls.has(r.url) || savedUrls.has(r.url)}
-                  className={`flex-shrink-0 text-xs px-2 py-1 rounded transition-colors ${savedUrls.has(r.url)
-                      ? "bg-muted text-muted-foreground cursor-not-allowed"
-                      : savingUrls.has(r.url)
-                        ? "bg-primary/70 text-primary-foreground cursor-wait"
-                        : "bg-primary text-primary-foreground hover:opacity-90"
-                    }`}
-                >
-                  {savedUrls.has(r.url) ? "Saved ✓" : savingUrls.has(r.url) ? "Saving…" : "Save"}
-                </button>
+      {/* Sonar slide-over modal */}
+      {sonarOpen && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end"
+          onClick={(e) => { if (e.target === e.currentTarget) setSonarOpen(false); }}
+        >
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setSonarOpen(false)} />
+
+          {/* Drawer */}
+          <div className="relative z-10 w-full max-w-md h-full bg-background border-l border-border flex flex-col shadow-2xl animate-in slide-in-from-right-8 duration-300">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <h2 className="font-semibold text-sm">Discover — #{tagName}</h2>
               </div>
-            ))}
+              <button
+                onClick={() => setSonarOpen(false)}
+                className="p-1 hover:bg-muted rounded-md transition-colors text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {sonarLoading ? (
+                <div className="space-y-5 animate-pulse">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="h-4 bg-muted rounded w-3/4" />
+                      <div className="h-3 bg-muted rounded w-full" />
+                      <div className="h-3 bg-muted rounded w-5/6" />
+                      <div className="h-3 bg-muted/50 rounded w-1/4" />
+                    </div>
+                  ))}
+                </div>
+              ) : sonarResults.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-12">No suggestions found.</p>
+              ) : (
+                <div className="space-y-5">
+                  {sonarResults.map((r, i) => (
+                    <div key={i} className="group border border-border rounded-lg p-4 hover:border-primary/30 hover:bg-primary/5 transition-colors">
+                      <a
+                        href={r.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-semibold text-foreground hover:text-primary hover:underline block leading-snug mb-1"
+                      >
+                        {r.title}
+                      </a>
+                      <p className="text-xs text-primary/70 font-medium mb-2">{r.domain}</p>
+                      <div className="mb-3">
+                        <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Why suggested</p>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{r.description}</p>
+                      </div>
+                      <button
+                        onClick={() => handleSaveFromSonar(r.url, r.title)}
+                        disabled={savingUrls.has(r.url) || savedUrls.has(r.url)}
+                        className={`text-xs px-3 py-1 rounded-full font-medium transition-colors ${
+                          savedUrls.has(r.url)
+                            ? "bg-muted text-muted-foreground cursor-not-allowed"
+                            : savingUrls.has(r.url)
+                              ? "bg-primary/70 text-primary-foreground cursor-wait"
+                              : "bg-primary text-primary-foreground hover:opacity-90"
+                        }`}
+                      >
+                        {savedUrls.has(r.url) ? "Saved ✓" : savingUrls.has(r.url) ? "Saving…" : "+ Save to library"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
