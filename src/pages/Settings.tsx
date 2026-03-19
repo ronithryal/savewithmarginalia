@@ -155,7 +155,68 @@ const Settings = () => {
         </div>
       </section>
 
+      {/* Claude Desktop — Power User */}
+      <section className="mb-12">
+        <h2 className="font-display text-xl font-semibold text-foreground mb-2">
+          Claude Desktop
+        </h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          Connect Claude Desktop to your Marginalia library. Once set up, you can ask Claude questions like <em>"What did I save about pricing strategy?"</em> and it will search your notes directly.
+        </p>
+
+        <div className="rounded-xl border border-border overflow-hidden">
+          {/* Step 1 */}
+          <div className="p-4 border-b border-border">
+            <p className="text-xs font-semibold text-foreground mb-1">Step 1 — Get your API key</p>
+            <p className="text-xs text-muted-foreground">
+              Your Marginalia MCP API key is stored in your <code className="bg-muted px-1 py-0.5 rounded text-[11px]">user_preferences</code> row under <code className="bg-muted px-1 py-0.5 rounded text-[11px]">mcp_api_key</code>. Generate one in Supabase or ask your admin.
+            </p>
+          </div>
+
+          {/* Step 2 */}
+          <div className="p-4 border-b border-border">
+            <p className="text-xs font-semibold text-foreground mb-2">Step 2 — Add to Claude Desktop config</p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Open <code className="bg-muted px-1 py-0.5 rounded text-[11px]">~/Library/Application Support/Claude/claude_desktop_config.json</code> and add this block:
+            </p>
+            <div className="relative group">
+              <pre className="text-[11px] bg-muted rounded-lg p-3 overflow-x-auto leading-relaxed text-foreground/80">{`{
+  "mcpServers": {
+    "marginalia": {
+      "url": "${SUPABASE_URL}/functions/v1/mcp",
+      "headers": {
+        "x-api-key": "YOUR_MARGINALIA_API_KEY"
+      }
+    }
+  }
+}`}</pre>
+              <button
+                onClick={() => {
+                  const config = `{\n  "mcpServers": {\n    "marginalia": {\n      "url": "${SUPABASE_URL}/functions/v1/mcp",\n      "headers": {\n        "x-api-key": "YOUR_MARGINALIA_API_KEY"\n      }\n    }\n  }\n}`;
+                  navigator.clipboard.writeText(config);
+                  toast.success("Config copied to clipboard");
+                }}
+                className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] bg-background border border-border rounded px-2 py-1 text-muted-foreground hover:text-foreground"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+
+          {/* Available tools */}
+          <div className="p-4">
+            <p className="text-xs font-semibold text-foreground mb-2">Available tools</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              {["listTags", "listArticlesByTag", "listQuotesByTag", "search", "getThreadBySessionId"].map((tool) => (
+                <code key={tool} className="text-[11px] bg-muted rounded px-2 py-1 text-muted-foreground">{tool}</code>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Developer tools – only in dev */}
+
       {import.meta.env.DEV && (
         <section className="mb-12">
           <h2 className="font-display text-xl font-semibold text-foreground mb-6">
