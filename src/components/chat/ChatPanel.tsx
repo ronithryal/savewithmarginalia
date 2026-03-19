@@ -102,7 +102,7 @@ export function ChatPanel({
       <ScrollArea className="flex-1 min-h-0 mb-4">
         <div className="space-y-4 pb-2">
           {!hasMessages && !loading && (
-            <div className="flex flex-col items-center justify-center pt-32 gap-8">
+            <div className="flex flex-col items-center justify-center pt-24 gap-8">
               <p className="text-muted-foreground text-lg italic">
                 What are you thinking about?
               </p>
@@ -116,6 +116,39 @@ export function ChatPanel({
                     {s}
                   </button>
                 ))}
+              </div>
+
+              {/* Heydex-style mode launchers */}
+              <div className="w-full max-w-lg">
+                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-3 text-center">Or run a structured analysis</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {[
+                    {
+                      label: "Weekly Review",
+                      description: "Key themes, open questions & next week's focus",
+                      prompt: "Run a weekly review. What themes recurred in my reading this week? What's unresolved? What should be my single focus next week?",
+                    },
+                    {
+                      label: "Feature Decision",
+                      description: "Build vs. buy vs. defer — with a real recommendation",
+                      prompt: "Help me make a feature decision. Analyze what I've saved for evidence of the core problem, risks, and give me a concrete build/buy/defer recommendation.",
+                    },
+                    {
+                      label: "Call Prep",
+                      description: "Context, their priorities & best questions to ask",
+                      prompt: "Help me prep for a meeting. Based on what I've saved, what's the key context, what are they likely optimizing for, and what 2-3 questions would unlock the most value?",
+                    },
+                  ].map((mode) => (
+                    <button
+                      key={mode.label}
+                      onClick={() => onSend(mode.prompt)}
+                      className="group flex flex-col gap-1 rounded-xl border border-border p-3 text-left hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                    >
+                      <span className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{mode.label}</span>
+                      <span className="text-[11px] text-muted-foreground leading-relaxed">{mode.description}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}

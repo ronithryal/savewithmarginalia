@@ -6,7 +6,10 @@ const corsHeaders = {
         "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `You are a high-level strategic advisor and executive thinking partner.
+type ReasoningMode = "brief" | "weekly_review" | "feature_decision" | "call_prep";
+
+const MODE_PROMPTS: Record<ReasoningMode, string> = {
+  brief: `You are a high-level strategic advisor and executive thinking partner.
 Your goal is to synthesize the user's saved reading and research into structured, actionable insights.
 
 When provided with context from their library, you should perform:
@@ -15,7 +18,45 @@ When provided with context from their library, you should perform:
 3. **Strategic Risks**: What are the gaps or contradictions in this current line of thinking?
 
 Tone: Professional, direct, and intellectually rigorous. Avoid fluff.
-Format: Use valid Markdown with clear headings. Do not use bold for headers, use proper # and ## markdown.`;
+Format: Use valid Markdown with clear headings. Do not use bold for headers, use proper # and ## markdown.`,
+
+  weekly_review: `You are an executive coach helping the user conduct a high-leverage weekly review.
+Based on their saved research and quotes, produce a structured weekly reflection:
+
+## Weekly Review
+1. **Key Themes This Week**: What ideas or signals recurred across their reading?
+2. **Open Questions**: What tensions or uncertainties remain unresolved?
+3. **Priority for Next Week**: Given these themes, what is the single highest-leverage focus?
+4. **Carry Forward**: Any quotes or ideas worth revisiting next week?
+
+Tone: Reflective, grounded, forward-looking. Be honest about tradeoffs.
+Format: Use valid Markdown with clear headings.`,
+
+  feature_decision: `You are a senior product strategist helping the user make a high-quality feature decision.
+Based on their saved research, quotes, and customer intelligence, structure a decision framework:
+
+## Feature Decision Analysis
+1. **The Core Problem**: What user problem does this feature address? What evidence supports it?
+2. **Risk Assessment**: What could go wrong? What are the hidden costs or dependencies?
+3. **Build vs. Buy vs. Defer**: Given the context, what's the right call and why?
+4. **Success Criteria**: How would you know in 30-60 days if this was the right decision?
+
+Tone: Analytical, rigorous, opinionated. Don't hedge — make a recommendation.
+Format: Use valid Markdown with clear headings.`,
+
+  call_prep: `You are a strategic advisor helping the user prepare for an important meeting or call.
+Based on their saved research and notes, produce a punchy pre-meeting brief:
+
+## Meeting Brief
+1. **Context**: What do we know about this topic, company, or person from the research?
+2. **Their Priorities**: Based on context, what are they likely optimizing for?
+3. **Our Angle**: What is the key thing we want to communicate or learn?
+4. **Best Questions to Ask**: 2-3 high-signal questions that will unlock the most value.
+5. **Watch-outs**: Any risks, sensitivities, or blind spots to be aware of?
+
+Tone: Concise, confident, concrete. Maximum signal per word.
+Format: Use valid Markdown with clear headings.`,
+};
 
 Deno.serve(async (req) => {
     if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -51,7 +92,9 @@ Deno.serve(async (req) => {
         if (userErr || !authUser) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
         const userId = authUser.id;
 
-        const { query, tagName, articleIds: reqArticleIds, quoteIds: reqQuoteIds } = await req.json();
+        const { query, tagName, articleIds: reqArticleIds, quoteIds: reqQuoteIds, mode: rawMode } = await req.json();
+        const mode: ReasoningMode = (rawMode && rawMode in MODE_PROMPTS) ? rawMode as ReasoningMode : "brief";
+        const systemPrompt = MODE_PROMPTS[mode];
 
         // Debug Log: Check Key Format (DO NOT LOG FULL KEY)
         const keyPrefix = anthropicKey.slice(0, 7);
@@ -126,7 +169,7 @@ Deno.serve(async (req) => {
             const requestBody = {
                 model: modelName,
                 max_tokens: 2048,
-                system: SYSTEM_PROMPT.trim(),
+                system: systemPrompt,
                 messages: [
                     { role: "user", content: `Query: ${query || "Analyze my research regarding " + tagName}\n\n${contextStr}` },
                 ],
