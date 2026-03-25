@@ -1,7 +1,9 @@
 # Marginalia — Roadmap
 
-## Project Overview
-Marginalia (repo: savewithmarginalia) is a personal article and quote keeper built with React + TypeScript + Vite + Tailwind + shadcn/ui, hosted on Lovable (savewithmarginalia.lovable.app) with Supabase for database, auth, and edge functions. It’s evolving into an executive intelligence engine — a quote‑centric knowledge graph and agent‑ready context layer for Claude, GPT, and other tools — designed to accelerate high‑leverage workflows like synthesizing product vision, conducting research, and drafting executive briefings. It achieves this by ingesting diverse data sources: from articles and quotes to enterprise telemetry (PostHog, Datadog, Amplitude) and customer sentiment (Intercom).
+## Project Overview & Dex Pivot
+Marginalia (repo: savewithmarginalia) is evolving from a standalone web app into an **opinionated web client on top of the Dex Engine** (a Markdown-first personal OS running locally/via MCP). Rather than duplicating logic with its own database for all features, Marginalia will serve as the cloud UI over a standardized Markdown vault (e.g., `10-workspaces/`, `20-decisions/`, `30-briefings/`), while Dex handles the ingestion, skills, and intelligence scanning.
+
+*Previous definition:* Marginalia was a personal article and quote keeper built with React + TypeScript + Vite + Tailwind + shadcn/ui, hosted on Lovable (savewithmarginalia.lovable.app) with Supabase for database, auth, and edge functions.
 
 ## Phase 1 — Mobile Polish & Core UX ✅
 - [x] Mobile hamburger sidebar menu
@@ -117,3 +119,11 @@ Marginalia (repo: savewithmarginalia) is a personal article and quote keeper bui
 - [ ] **Persistent Memory Integration**: store preferences and judgments via Mem0
 - [ ] **Strategic Brief generator**: combines quotes, sentiment (X), and analytics for a tag
 - [ ] **"What would I do?" proxy**: Marginalia acting as a trusted proxy for decision making
+
+## Phase 13 — Dex Engine Integration (Active Pivot)
+*Marginalia acts as the cockpit; Dex acts as the engine.*
+- [x] **Vault Integration scaffolding**: API clients and mock edge functions to read `10-workspaces`.
+- [x] **Workspace UI scaffolding**: `/workspaces/:slug` mapping Dex concepts (Signals, Next Bets, Specs, Decisions) to the UI.
+- [ ] **Dex GitHub Fork Setup**: Fork `davekilleen/dex` and configure it fully within the local environment.
+- [ ] **Supabase to Local Vault Bridge**: Connect Marginalia's Edge Functions to actually read the local Dex markdown files or a synced cloud bucket.
+- [ ] **Skill Triggers**: Wire up UI buttons ("Propose Bets", "Morning Intel") to directly invoke Dex/Claude Python MCP server routines.

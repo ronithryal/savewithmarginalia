@@ -20,6 +20,7 @@ import SearchPage from "./pages/Search";
 import Future from "./pages/Future";
 import ThreadDetail from "./pages/ThreadDetail";
 import NotFound from "./pages/NotFound";
+import Workspace from "./pages/Workspace";
 
 const queryClient = new QueryClient();
 
@@ -48,6 +49,7 @@ const AppRoutes = () => {
         <Route path="/tags/:slug" element={<TagDetail />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/chat" element={<Chat />} />
+        <Route path="/workspaces/:slug" element={<Workspace />} />
         <Route path="/discover" element={<Discover />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/future" element={<Future />} />

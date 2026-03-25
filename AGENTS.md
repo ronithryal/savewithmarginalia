@@ -1,7 +1,7 @@
 # Marginalia — Agent Context
 
 ## Project Overview
-Marginalia (repo: savewithmarginalia) is a personal article and quote keeper built with React + TypeScript + Vite + Tailwind + shadcn/ui, hosted on Lovable (readmargin.lovable.app) with Supabase for database, auth, and edge functions. It’s evolving into an executive intelligence engine — a quote‑centric knowledge graph and agent‑ready context layer for Claude, GPT, and other tools — designed to accelerate high‑leverage workflows like synthesizing product vision, conducting research, and drafting executive briefings. It achieves this by ingesting diverse data sources: from articles and quotes to enterprise telemetry (PostHog, Datadog, Amplitude) and customer sentiment (Intercom).
+Marginalia (repo: savewithmarginalia) is evolving into a **web client on top of the Dex Engine** (a Markdown-first personal OS running locally/via MCP). Previously a standalone React/Supabase app on Lovable, the architecture is pivoting so that the Dex Vault (`10-workspaces/`, `20-decisions/`, `30-briefings/`) acts as the single source of truth for intelligence. The Marginalia frontend will read this vault and provide an opinionated UI for PMs/execs to trigger Dex/Claude skills (like "morning intel" or "propose next bets").
 
 **Frozen backup:** `ronithryal/marginalia-stable` — do not touch.
 
@@ -19,9 +19,10 @@ Marginalia (repo: savewithmarginalia) is a personal article and quote keeper bui
 ### Introduced through the roadmap
 | Tool | Phase | Role |
 |---|---|---|
+| **Dex Engine / MCP** | 13 | The core automation engine, intelligence scanner, and single source of truth (`davekilleen/dex` fork). |
 | **Perplexity Sonar** | 4.5 | Open-web discovery and search ranked by tag graph |
 | **OpenAI** | 6 | `text-embedding-3-small` for pgvector RAG embeddings |
-| **Claude 3.x** | 8.5+ | Reasoning, structured analysis, and agentic workflows |
+| **Claude 3.x** | 8.5+ | Reasoning, structured analysis, and agentic workflows via Dex Skills |
 | **Mem0** | 12 | Persistent memory provider for long-term user context |
 | **Cloudflare** | 4 | DNS + CDN + DDoS after buying domain |
 | **PostHog / Amplitude** | 4 / 10.5 | Product analytics — track saves, searches, and feature telemetry |
