@@ -34,6 +34,7 @@
 - [ ] **Marginalia MCP server**: Exposing the cloud-synced tags and quotes to external agents (Claude Desktop).
 - [ ] **Public API keys**: Scoped read/write access for personal automation (Zapier/Make).
 - [ ] **Resend Integration**: Weekly intelligence digest (Executive Summary) via email.
+- [ ] **Autonomous Intelligence (Cron)**: Triggering background syncs *after* transition to automated MCP/API pipelines.
 
 ---
 
