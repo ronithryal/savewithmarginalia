@@ -24,7 +24,7 @@ Marginalia (repo: savewithmarginalia) is evolving from a standalone web app into
 
 ## Phase 4 — Sign-In Upgrade
 - [x] **Google OAuth** — enable Google Sign-In via Supabase Auth dashboard
-- [/] X import: `supabase/functions/x-import` (OAuth 2.0 PKCE) + Settings UI + cron
+- [/] X import: `dex/System/ingest/parse_x.py` (Drop Zone Pivot) + Settings UI
 - [ ] Share quote/article to X via `navigator.share()` or intent/tweet deep link
 - [ ] Wire `user_feeds` to /discover edge function (hourly RSS cron)
 - [ ] Source badges on cards (LinkedIn, X, RSS, favicon)
@@ -36,7 +36,7 @@ Marginalia (repo: savewithmarginalia) is evolving from a standalone web app into
 - [ ] **PostHog** — product analytics (Lovable has built-in analytics until you need custom funnels)
 - [ ] **Sentry** — error tracking for edge functions
 - [ ] **Upstash Redis** — rate-limit import webhooks; cache Discover feed
-- [ ] **LinkedIn import** — `scripts/linkedin_import.py` + `supabase/functions/linkedin-import`
+- [x] **LinkedIn import** — `dex/System/ingest/parse_linkedin.py` (COMPLETE — 3,477 items)
 
 ## Phase 5 — Discover Personalization + Sonar API
 - [ ] Tag-weighted RSS filtering: rank /discover feed items by overlap with user's saved tags
